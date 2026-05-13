@@ -1,0 +1,108 @@
+# WhisperCrawl  configuration
+# Adjust for your environment.
+
+# Directory to scan for audio/video files (recursive)
+watch_dir: ${WATCH_DIR:./audio/}
+
+# File extensions to process
+extensions:
+  - .mp3
+  - .wav
+  - .m4a
+  - .ogg
+  - .mp4
+  - .mkv
+  - .avi
+
+# Processing mode:
+#   false = skip files that already have a .txt output (default)
+#   true  = reprocess all files regardless of existing output
+rescan: false
+
+# ── Transcription ─────────────────────────────────────────────────────────────
+transcription:
+  url: ${WHISPER_URL:http://localhost:9000}   # whisper-asr-webservice base URL
+  language: ru                    # Default language: auto, ru, en, etc.
+  diarize: true                    # Enable speaker diarization (requires HF_TOKEN in whisper container for whisperx)
+  output_suffix: .txt               # Output file suffix
+  error_suffix: _err.txt            # Error file suffix
+  timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
+  # initial_prompt: ""                # Hint text passed to the model
+  # vad_filter: false                 # Voice activity detection (faster_whisper only)
+  # word_timestamps: false            # Return per-word timestamps
+  # encode: true                      # Re-encode audio before sending
+
+# ── Post-Processing ───────────────────────────────────────────────────────────
+postprocessing:
+  llm_enabled: false    # LLM correction via ollama (default: true)
+  regex_enabled: true  # Regex cleanup pass (default: true)
+  url: ${OLLAMA_URL:http://localhost:11434}       # ollama base URL
+  model: gemma3:1b
+  prompt: |
+    Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
+    ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
+    Верни только исправленный текст без пояснений.
+  regex_patterns:
+    - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
+  output_suffix: _fix.txt
+  error_suffix: _err.txt
+  timeout: 600                      # HTTP timeout in seconds
+  replace_transcription: true    # true = move _fix.txt over .txt after success (no _fix.txt kept)
+
+# ── Per-File Summarization ────────────────────────────────────────────────────
+file_summarization:
+  llm_enabled: true
+  summarize_source: postprocessed   # "postprocessed" (_fix.txt) | "original" (.txt)
+  url: ${OLLAMA_URL:http://localhost:11434}
+  model: gemma3:1b
+  prompt: |
+    Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
+    принятые решения и задачи к выполнению. Отвечай на языке текста.
+  output_suffix: _sum.txt
+  error_suffix: _err.txt
+  timeout: 300                      # HTTP timeout in seconds
+
+# ── Per-Directory Summarization ───────────────────────────────────────────────
+dir_summarization:
+  llm_enabled: true
+  url: ${OLLAMA_URL:http://localhost:11434}
+  model: gemma3:1b
+  prompt: |
+    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Напиши единое сводное резюме: главные темы, итоги и договорённости.
+    Отвечай на языке текста.
+  output_suffix: _sum.txt
+  error_suffix: _err.txt
+  timeout: 300                      # HTTP timeout in seconds
+
+# ── Cleanup (used with --cleanup / --once --cleanup flags) ───────────────────
+# targets: which output suffixes to remove (default: .txt, _fix.txt, _sum.txt)
+# on: "success" — only clean when all pipeline steps succeeded
+#     "always"  — clean even after a failed step
+cleanup:
+  targets:
+    - .txt
+    - _fix.txt
+    - _sum.txt
+  on: success
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  # Application log (console + optional rotating file)
+  app_log_file: ${LOGS_DIR:./logs}/whispercrawl.log   # omit to log to console only
+  app_log_level: INFO                      # DEBUG | INFO | WARNING | ERROR
+  app_log_max_bytes: 10485760              # 10 MB per file
+  app_log_backup_count: 5                  # number of rotated backups to keep
+
+  # Service interaction log (structured ndjson per HTTP call)
+  requests: true
+  diarize_log: false               # Save raw JSON diarization response to <file>_diarize.json
+  log_dir: ${LOGS_DIR:./logs}/   # directory — writes service_requests.ndjson inside
+  # log_file: ./my.ndjson     # explicit path override (takes precedence over log_dir)
+  max_text_length: 500        # truncate request/response text in log (null = unlimited)
+
+# ── Schedule ──────────────────────────────────────────────────────────────────
+# Use either cron or interval, not both. Comment out both to require --once flag.
+schedule:
+  # cron: "0 * * * *"      # every hour at :00
+  interval: 30s             # every 30 minutes (supports: 30s, 15m, 2h)

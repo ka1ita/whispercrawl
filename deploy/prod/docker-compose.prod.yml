@@ -1,0 +1,26 @@
+version: "3.9"
+
+# Production — WhisperCrawl only; connects to external whisper-asr-webservice and Ollama.
+# Copy this bundle to /opt/whispercrawl on the target host and run bash setup.sh first.
+#
+# Required: set WHISPER_URL and OLLAMA_URL in .env (copy from .env.example).
+#
+# Usage:
+#   bash service-start.sh      # start as background service
+#   bash service-down.sh       # stop
+#   docker compose logs -f     # tail logs
+
+services:
+
+  whispercrawl:
+    image: whispercrawl:latest
+    environment:
+      WATCH_DIR: /audio
+      WHISPER_URL: ${WHISPER_URL} # http://whisper:9000
+      OLLAMA_URL: ${OLLAMA_URL} # http://ollama:11434
+      LOGS_DIR: /logs
+    volumes:
+      - ./audio:/audio
+      - ./config.yaml:/config.yaml:ro
+      - ./logs:/logs
+    restart: unless-stopped

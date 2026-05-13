@@ -1,0 +1,91 @@
+# WhisperCrawl configuration — prod-local (all-in-one server)
+# Service URLs are pre-set to internal Docker network names; no changes needed there.
+# Review language, model, schedule, and other settings for your environment.
+
+watch_dir: ${WATCH_DIR:./audio/}
+
+extensions:
+  - .mp3
+  - .wav
+  - .m4a
+  - .ogg
+  - .mp4
+  - .mkv
+  - .avi
+
+rescan: false
+
+# ── Transcription ─────────────────────────────────────────────────────────────
+transcription:
+  url: ${WHISPER_URL:http://whisper:9000}
+  language: ru                    # Default language: auto, ru, en, etc.
+  diarize: true                   # Requires HF_TOKEN set in .env
+  output_suffix: .txt
+  error_suffix: _err.txt
+  timeout: 3600
+
+# ── Post-Processing ───────────────────────────────────────────────────────────
+postprocessing:
+  llm_enabled: false
+  regex_enabled: true
+  url: ${OLLAMA_URL:http://ollama:11434}
+  model: gemma3:1b
+  prompt: |
+    Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
+    ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
+    Верни только исправленный текст без пояснений.
+  regex_patterns:
+    - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
+  output_suffix: _fix.txt
+  error_suffix: _err.txt
+  timeout: 600
+  replace_transcription: true
+
+# ── Per-File Summarization ────────────────────────────────────────────────────
+file_summarization:
+  llm_enabled: true
+  summarize_source: postprocessed
+  url: ${OLLAMA_URL:http://ollama:11434}
+  model: gemma3:1b
+  prompt: |
+    Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
+    принятые решения и задачи к выполнению. Отвечай на языке текста.
+  output_suffix: _sum.txt
+  error_suffix: _err.txt
+  timeout: 300
+
+# ── Per-Directory Summarization ───────────────────────────────────────────────
+dir_summarization:
+  llm_enabled: true
+  url: ${OLLAMA_URL:http://ollama:11434}
+  model: gemma3:1b
+  prompt: |
+    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Напиши единое сводное резюме: главные темы, итоги и договорённости.
+    Отвечай на языке текста.
+  output_suffix: _sum.txt
+  error_suffix: _err.txt
+  timeout: 300
+
+# ── Cleanup ───────────────────────────────────────────────────────────────────
+cleanup:
+  targets:
+    - .txt
+    - _fix.txt
+    - _sum.txt
+  on: success
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+logging:
+  app_log_file: ${LOGS_DIR:./logs}/whispercrawl.log
+  app_log_level: INFO
+  app_log_max_bytes: 10485760
+  app_log_backup_count: 5
+  requests: true
+  diarize_log: false
+  log_dir: ${LOGS_DIR:./logs}/
+  max_text_length: 500
+
+# ── Schedule ──────────────────────────────────────────────────────────────────
+schedule:
+  interval: 30s

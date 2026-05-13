@@ -1,0 +1,60 @@
+version: "3.9"
+
+# prod-local — all services on a single server, no internet required.
+# All images are loaded from dist/ by setup.sh before first run.
+#
+# Usage:
+#   bash setup.sh          # first-run: load images, create dirs, copy .env
+#   bash service-start.sh  # start all services in background
+#   bash service-down.sh   # stop all services
+#   docker compose -f docker-compose.prod-local.yml logs -f
+
+services:
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    environment:
+      ASR_MODEL: ${ASR_MODEL:-small}    # tiny | base | small | medium | large
+      ASR_ENGINE: whisperx
+      HF_TOKEN: ${HF_TOKEN}
+      HF_HUB_DISABLE_TELEMETRY: true
+      # HF_HUB_OFFLINE: true            # enable after pyannote model is cached
+    volumes:
+      - whisper_cache:/root/.cache/whisper
+      - hf_cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # GPU support (requires nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  whispercrawl:
+    image: whispercrawl:latest
+    environment:
+      WATCH_DIR: /audio
+      WHISPER_URL: http://whisper:9000
+      OLLAMA_URL: http://ollama:11434
+      LOGS_DIR: /logs
+    volumes:
+      - ./audio:/audio
+      - ./config.yaml:/config.yaml:ro
+      - ./logs:/logs
+    depends_on:
+      - whisper
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  whisper_cache:
+  hf_cache:
+  ollama_data:
