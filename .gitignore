@@ -37,8 +37,7 @@ Thumbs.db
 !docs/**/*.txt
 !tasks/**/*.txt
 
-# Audio for testing — track directory structure but not content
-audio/*
-!audio/.gitkeep
+# Audio for testing — track content, but keep _private untracked
+audio/_private/
 logs/*
 !logs/.gitkeep
