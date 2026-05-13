@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+dist/
+!deploy/prod/dist/
+deploy/prod/dist/*.tar
+build/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Local config overrides (not committed)
+config/config.*.local.yaml
+.claude/settings.local.json
+
+# Local secrets (not committed — copy docker/.env.example to .env and fill in)
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output files produced by the service (don't commit processed results)
+*.txt
+!config/**/*.txt
+!docs/**/*.txt
+!tasks/**/*.txt
+
+# Audio for testing
+audio/
+logs/
