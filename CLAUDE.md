@@ -35,14 +35,11 @@ pytest tests/test_file_walker.py
 ruff check src tests
 ruff format src tests
 
-# Start dev services (whisper + ollama via Docker)
+# Start dev services (whisper + ollama via Docker; gemma3:1b is pulled automatically on first start)
 docker compose -f deploy/dev/docker-compose.dev.yml up -d
 
 # Rebuild whispercrawl image after changing src/ or pyproject.toml
 docker compose -f deploy/dev/docker-compose.dev.yml up -d --build whispercrawl
-
-# Pull an ollama model (required before first use)
-docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
 ```
 
 ## Architecture

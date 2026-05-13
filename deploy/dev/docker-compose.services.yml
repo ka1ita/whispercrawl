@@ -7,7 +7,6 @@ version: "3.9"
 #
 # Usage:
 #   docker compose -f deploy/dev/docker-compose.services.yml up -d
-#   docker compose -f deploy/dev/docker-compose.services.yml exec ollama ollama pull gemma3:1b
 
 services:
 
@@ -33,6 +32,11 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     # GPU support (requires nvidia-container-toolkit):
     # deploy:
     #   resources:
@@ -41,6 +45,16 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "gemma3:1b"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
 
 volumes:
   whisper_cache:

@@ -37,6 +37,11 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     # GPU support (requires nvidia-container-toolkit):
     # deploy:
     #   resources:
@@ -45,6 +50,16 @@ services:
     #         - driver: nvidia
     #           count: 1
     #           capabilities: [gpu]
+
+  ollama-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "gemma3:1b"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
 
   whispercrawl:
     build:
@@ -60,8 +75,10 @@ services:
       - ../../config.yaml:/config.yaml:ro
       - ../../logs:/logs
     depends_on:
-      - whisper
-      - ollama
+      whisper:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
