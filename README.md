@@ -55,7 +55,7 @@ docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemm
 
 1. Accept the model licence at <https://huggingface.co/pyannote/speaker-diarization-3.1>
 2. Create a token at <https://huggingface.co/settings/tokens>
-3. Add it to `.env` in the project root (copy from `.env.example`):
+3. Add it to `deploy/dev/.env` (copy from `deploy/dev/.env.example`):
 
    ```env
    HF_TOKEN=hf_your_token_here
@@ -191,9 +191,9 @@ Two compose configurations are provided — pick the one that matches your envir
 
 ```text
 Dockerfile                              # whispercrawl image (multi-stage, non-root)
-.env.example                            # environment variable template
 deploy/
   dev/
+    .env.example                        # environment variable template (copy to .env here)
     docker-compose.dev.yml              # all three services in Docker
     docker-compose.services.yml         # whisper + ollama only (run whispercrawl locally)
     start.sh / stop.sh / rebuild.sh / start-external.sh

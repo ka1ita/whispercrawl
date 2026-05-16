@@ -22,7 +22,7 @@ services:
     environment:
       ASR_MODEL: tiny          # tiny | base | small | medium | large
       ASR_ENGINE: whisperx
-      HF_TOKEN: ${HF_TOKEN}   # set in .env at project root (see .env.example)
+      HF_TOKEN: ${HF_TOKEN}   # set in deploy/dev/.env (see deploy/dev/.env.example)
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:

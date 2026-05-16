@@ -3,7 +3,7 @@ version: "3.9"
 # Whisper + Ollama only — use when running WhisperCrawl  locally (python -m whispercrawl).
 # Services are exposed on localhost so config.yaml defaults (localhost:9000 / localhost:11434) work as-is.
 #
-# Requires HF_TOKEN in .env at project root for whisperx diarization (see .env.example).
+# Requires HF_TOKEN in deploy/dev/.env for whisperx diarization (see deploy/dev/.env.example).
 #
 # Usage:
 #   docker compose -f deploy/dev/docker-compose.services.yml up -d
@@ -17,7 +17,7 @@ services:
     environment:
       ASR_MODEL: tiny          # tiny | base | small | medium | large
       ASR_ENGINE: whisperx
-      HF_TOKEN: ${HF_TOKEN}   # set in .env at project root (see .env.example)
+      HF_TOKEN: ${HF_TOKEN}   # set in deploy/dev/.env (see deploy/dev/.env.example)
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:
