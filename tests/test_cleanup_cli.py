@@ -11,7 +11,7 @@ EXTENSIONS = [".mp3", ".ogg", ".wav"]
 
 def _config(watch_dir: Path, targets=None) -> Config:
     if targets is None:
-        targets = [".txt", "_fix.txt", "_sum.txt"]
+        targets = ["", "_fix", "_sum"]
     return Config(
         watch_dir=watch_dir,
         extensions=EXTENSIONS,
@@ -55,7 +55,7 @@ class TestRunCleanupDeletes:
         txt = _touch(tmp_path / "call.txt")
         fix = _touch(tmp_path / "call_fix.txt")
 
-        run_cleanup(_config(tmp_path, targets=[".txt"]))
+        run_cleanup(_config(tmp_path, targets=[""]))
 
         assert not txt.exists()
         assert fix.exists()  # not in targets

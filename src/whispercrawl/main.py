@@ -25,13 +25,30 @@ def _pick_summary_input(
     return transcript
 
 
-def _write_error(file_path: Path, error_suffix: str, message: str) -> None:
-    err_path = file_path.with_name(file_path.stem + error_suffix)
+def output_path(base: Path, suffix: str, fmt: str) -> Path:
+    ext = ".html" if fmt == "html" else ".txt"
+    return base.with_name(base.stem + suffix + ext)
+
+
+def render_output(text: str, fmt: str) -> str:
+    if fmt != "html":
+        return text
+    from html import escape
+    return (
+        "<!DOCTYPE html>\n<html>\n"
+        '<head><meta charset="utf-8"></head>\n'
+        f"<body><pre>{escape(text)}</pre>\n</body>\n</html>"
+    )
+
+
+def _write_error(file_path: Path, error_suffix: str, fmt: str, message: str) -> None:
+    err_path = output_path(file_path, error_suffix, fmt)
     err_path.write_text(message, encoding="utf-8")
 
 
 def run_cleanup(config: Config, dry_run: bool = False) -> None:
     """Delete pipeline output files under watch_dir without running the pipeline."""
+    fmt = config.output_format
     targets = config.cleanup.targets
     removed = 0
 
@@ -41,13 +58,17 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         if media_path.suffix.lower() not in config.extensions:
             continue
         for suffix in targets:
-            output = media_path.with_name(media_path.stem + suffix)
-            if output.exists():
+            out = (
+                media_path.with_name(media_path.stem + suffix)
+                if suffix.endswith(".json")
+                else output_path(media_path, suffix, fmt)
+            )
+            if out.exists():
                 if dry_run:
-                    logger.info("Would clean: %s", output)
+                    logger.info("Would clean: %s", out)
                 else:
-                    output.unlink()
-                    logger.info("Cleaned: %s", output)
+                    out.unlink()
+                    logger.info("Cleaned: %s", out)
                 removed += 1
 
     # Also remove per-directory summary files found alongside media files
@@ -58,7 +79,12 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
     }
     for dir_path in sorted(dirs_seen):
         for suffix in targets:
-            dir_sum = dir_path / (dir_path.name + suffix)
+            dir_base = dir_path / dir_path.name
+            dir_sum = (
+                dir_path / (dir_path.name + suffix)
+                if suffix.endswith(".json")
+                else output_path(dir_base, suffix, fmt)
+            )
             if dir_sum.exists():
                 if dry_run:
                     logger.info("Would clean: %s", dir_sum)
@@ -68,6 +94,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
                 removed += 1
 
     # Remove all error files unconditionally (not restricted to cleanup.targets)
+    ext = ".html" if fmt == "html" else ".txt"
     err_suffixes = {
         config.transcription.error_suffix,
         config.postprocessing.error_suffix,
@@ -75,7 +102,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         config.dir_summarization.error_suffix,
     }
     for suffix in sorted(err_suffixes):
-        for err_file in sorted(config.watch_dir.rglob(f"*{suffix}")):
+        for err_file in sorted(config.watch_dir.rglob(f"*{suffix}{ext}")):
             if dry_run:
                 logger.info("Would clean: %s", err_file)
             else:
@@ -101,6 +128,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.extensions,
         config.transcription.output_suffix,
         config.rescan,
+        config.output_format,
     ))
 
     if dry_run:
@@ -110,7 +138,8 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             logger.info("Would process: %s", f)
         return
 
-    cleaner = Cleaner(config.cleanup) if cleanup else None
+    fmt = config.output_format
+    cleaner = Cleaner(config.cleanup, fmt) if cleanup else None
 
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
         transcriber = Transcriber(config.transcription, svc_log, config.logging.diarize_log)
@@ -137,13 +166,13 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 transcript = transcriber.transcribe(file_path)
             except TranscriptionError as e:
                 logger.error("Transcription failed for %s: %s", file_path, e)
-                _write_error(file_path, config.transcription.error_suffix, str(e))
+                _write_error(file_path, config.transcription.error_suffix, fmt, str(e))
                 if cleaner:
                     cleaner.clean(file_path, success=False)
                 continue
 
-            txt_path = file_path.with_name(file_path.stem + config.transcription.output_suffix)
-            txt_path.write_text(transcript, encoding="utf-8")
+            txt_path = output_path(file_path, config.transcription.output_suffix, fmt)
+            txt_path.write_text(render_output(transcript, fmt), encoding="utf-8")
             logger.info("Transcript written: %s", txt_path)
             dirs_with_files.add(file_path.parent)
 
@@ -152,8 +181,8 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             if postprocessor:
                 try:
                     fixed_text = postprocessor.process(transcript)
-                    fix_path = file_path.with_name(file_path.stem + config.postprocessing.output_suffix)
-                    fix_path.write_text(fixed_text, encoding="utf-8")
+                    fix_path = output_path(file_path, config.postprocessing.output_suffix, fmt)
+                    fix_path.write_text(render_output(fixed_text, fmt), encoding="utf-8")
                     if config.postprocessing.replace_transcription:
                         fix_path.replace(txt_path)
                         logger.info("Replaced transcript with post-processed: %s", txt_path)
@@ -161,7 +190,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                         logger.info("Post-processed: %s", fix_path)
                 except PostProcessingError as e:
                     logger.error("Post-processing failed for %s: %s", file_path, e)
-                    _write_error(file_path, config.postprocessing.error_suffix, str(e))
+                    _write_error(file_path, config.postprocessing.error_suffix, fmt, str(e))
                     success = False
 
             if file_summarizer:
@@ -173,32 +202,33 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 )
                 try:
                     summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
-                    sum_path = file_path.with_name(file_path.stem + config.file_summarization.output_suffix)
-                    sum_path.write_text(summary, encoding="utf-8")
+                    sum_path = output_path(file_path, config.file_summarization.output_suffix, fmt)
+                    sum_path.write_text(render_output(summary, fmt), encoding="utf-8")
                     logger.info("File summary written: %s", sum_path)
                 except SummarizationError as e:
                     logger.error("File summarization failed for %s: %s", file_path, e)
-                    _write_error(file_path, config.file_summarization.error_suffix, str(e))
+                    _write_error(file_path, config.file_summarization.error_suffix, fmt, str(e))
                     success = False
 
             if cleaner:
                 cleaner.clean(file_path, success)
 
             if success:
-                err_path = file_path.with_name(file_path.stem + config.transcription.error_suffix)
+                err_path = output_path(file_path, config.transcription.error_suffix, fmt)
                 if err_path.exists():
                     err_path.unlink()
                     logger.debug("Removed stale error file: %s", err_path)
 
         if dir_summarizer:
             for dir_path in sorted(dirs_with_files):
-                dir_err_path = dir_path / (dir_path.name + config.dir_summarization.error_suffix)
+                dir_base = dir_path / dir_path.name
+                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, fmt)
                 try:
                     dir_summary = dir_summarizer.summarize_directory(
-                        dir_path, config.file_summarization.output_suffix
+                        dir_path, config.file_summarization.output_suffix, fmt
                     )
-                    dir_sum_path = dir_path / (dir_path.name + config.dir_summarization.output_suffix)
-                    dir_sum_path.write_text(dir_summary, encoding="utf-8")
+                    dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, fmt)
+                    dir_sum_path.write_text(render_output(dir_summary, fmt), encoding="utf-8")
                     logger.info("Directory summary written: %s", dir_sum_path)
                     if dir_err_path.exists():
                         dir_err_path.unlink()

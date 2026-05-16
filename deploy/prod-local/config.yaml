@@ -15,13 +15,16 @@ extensions:
 
 rescan: false
 
+# Output format for all pipeline steps: txt | html
+output_format: txt
+
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
   url: ${WHISPER_URL:http://whisper:9000}
   language: ru                    # Default language: auto, ru, en, etc.
   diarize: true                   # Requires HF_TOKEN set in .env
-  output_suffix: .txt
-  error_suffix: _err.txt
+  output_suffix: ""
+  error_suffix: _err
   timeout: 3600
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
@@ -36,8 +39,8 @@ postprocessing:
     Верни только исправленный текст без пояснений.
   regex_patterns:
     - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
-  output_suffix: _fix.txt
-  error_suffix: _err.txt
+  output_suffix: _fix
+  error_suffix: _err
   timeout: 600
   replace_transcription: true
 
@@ -50,8 +53,8 @@ file_summarization:
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  output_suffix: _sum.txt
-  error_suffix: _err.txt
+  output_suffix: _sum
+  error_suffix: _err
   timeout: 300
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
@@ -63,16 +66,16 @@ dir_summarization:
     Ниже приведены резюме нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  output_suffix: _sum.txt
-  error_suffix: _err.txt
+  output_suffix: _sum
+  error_suffix: _err
   timeout: 300
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 cleanup:
   targets:
-    - .txt
-    - _fix.txt
-    - _sum.txt
+    - ""
+    - _fix
+    - _sum
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

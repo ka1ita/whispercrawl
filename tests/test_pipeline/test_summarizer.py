@@ -13,7 +13,7 @@ def _cfg(**kwargs) -> OllamaStepConfig:
         url="http://localhost:11434",
         model="gemma3:1b",
         prompt="Summarise the text.",
-        output_suffix="_sum.txt",
+        output_suffix="_sum",
     )
     defaults.update(kwargs)
     return OllamaStepConfig(**defaults)
@@ -88,7 +88,7 @@ class TestSummarizeDirectory:
 
         cfg = _cfg()
         with patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_response("Combined")) as mock_post:
-            result = Summarizer(cfg).summarize_directory(tmp_path, "_sum.txt")
+            result = Summarizer(cfg).summarize_directory(tmp_path, "_sum", "txt")
 
         assert result == "Combined"
         user_content = mock_post.call_args.kwargs["json"]["messages"][1]["content"]
@@ -102,7 +102,7 @@ class TestSummarizeDirectory:
 
         cfg = _cfg()
         with patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_response()) as mock_post:
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum.txt")
+            Summarizer(cfg).summarize_directory(tmp_path, "_sum", "txt")
 
         content = mock_post.call_args.kwargs["json"]["messages"][1]["content"]
         assert content.index("A") < content.index("Z")
@@ -110,11 +110,11 @@ class TestSummarizeDirectory:
     def test_no_summary_files_raises_error(self, tmp_path):
         cfg = _cfg()
         with pytest.raises(SummarizationError, match="No summary files found"):
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum.txt")
+            Summarizer(cfg).summarize_directory(tmp_path, "_sum", "txt")
 
     def test_ignores_files_with_wrong_suffix(self, tmp_path):
         (tmp_path / "a.txt").write_text("raw transcript", encoding="utf-8")
 
         cfg = _cfg()
         with pytest.raises(SummarizationError, match="No summary files found"):
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum.txt")
+            Summarizer(cfg).summarize_directory(tmp_path, "_sum", "txt")

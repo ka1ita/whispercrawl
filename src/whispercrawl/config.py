@@ -23,8 +23,8 @@ class TranscriptionConfig:
     url: str = "http://localhost:9000"
     language: str = "auto"
     diarize: bool = False
-    output_suffix: str = ".txt"
-    error_suffix: str = "_err.txt"
+    output_suffix: str = ""
+    error_suffix: str = "_err"
     timeout: int = 300
 
     initial_prompt: Optional[str] = None
@@ -38,14 +38,14 @@ class OllamaStepConfig:
     url: str = "http://localhost:11434"
     model: str = "llama3.2"
     prompt: str = ""
-    output_suffix: str = "_fix.txt"
-    error_suffix: str = "_err.txt"
+    output_suffix: str = "_fix"
+    error_suffix: str = "_err"
     llm_enabled: bool = True    # controls LLM correction step
     regex_enabled: bool = True  # controls regex cleanup pass
-    replace_transcription: bool = False  # move _fix.txt over .txt after success
+    replace_transcription: bool = False  # move _fix over transcript after success
     regex_patterns: List[str] = field(default_factory=list)
     timeout: int = 300
-    summarize_source: str = "postprocessed"  # "postprocessed" (_fix.txt) | "original" (.txt)
+    summarize_source: str = "postprocessed"  # "postprocessed" (_fix) | "original" (transcript)
 
 
 @dataclass
@@ -56,7 +56,7 @@ class ScheduleConfig:
 
 @dataclass
 class CleanupConfig:
-    targets: List[str] = field(default_factory=lambda: [".txt", "_fix.txt", "_sum.txt", "_diarize.json"])
+    targets: List[str] = field(default_factory=lambda: ["", "_fix", "_sum", "_diarize.json"])
     on: str = "success"  # "success" | "always"
 
 
@@ -78,11 +78,12 @@ class Config:
     watch_dir: Path
     extensions: List[str]
     rescan: bool = False  # False = skip-processed, True = full rescan
+    output_format: str = "txt"  # "txt" | "html"
 
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
-    postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix.txt"))
-    file_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum.txt"))
-    dir_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum.txt"))
+    postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix"))
+    file_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
+    dir_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -98,11 +99,16 @@ def load_config(path: Path) -> Config:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(_expand_env(f.read()))
 
+    fmt = raw.get("output_format", "txt")
+    if fmt not in ("txt", "html"):
+        raise ValueError(f"output_format must be 'txt' or 'html', got {fmt!r}")
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=Path(raw["watch_dir"]),
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
+        output_format=fmt,
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),

@@ -17,7 +17,7 @@ def _config(tmp_path: Path) -> Config:
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=True,
-        transcription=TranscriptionConfig(output_suffix=".txt"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=True),
         file_summarization=OllamaStepConfig(llm_enabled=True),
         dir_summarization=OllamaStepConfig(llm_enabled=True),

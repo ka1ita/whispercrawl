@@ -6,11 +6,11 @@ import pytest
 from whispercrawl.config import CleanupConfig
 from whispercrawl.pipeline.cleaner import Cleaner
 
-DEFAULT_SUFFIXES = [".txt", "_fix.txt", "_sum.txt"]
+DEFAULT_SUFFIXES = ["", "_fix", "_sum"]
 
 
-def _make_outputs(audio: Path, suffixes=DEFAULT_SUFFIXES) -> list[Path]:
-    files = [audio.with_name(audio.stem + s) for s in suffixes]
+def _make_outputs(audio: Path, suffixes=DEFAULT_SUFFIXES, ext=".txt") -> list[Path]:
+    files = [audio.with_name(audio.stem + s + ext) for s in suffixes]
     for f in files:
         f.write_text("content")
     return files
@@ -65,7 +65,7 @@ class TestCleanerTargets:
         txt.write_text("t")
         fix.write_text("f")
 
-        Cleaner(CleanupConfig(targets=[".txt"], on="success")).clean(audio, success=True)
+        Cleaner(CleanupConfig(targets=[""], on="success")).clean(audio, success=True)
 
         assert not txt.exists()
         assert fix.exists()
@@ -75,3 +75,22 @@ class TestCleanerTargets:
         audio.touch()
 
         Cleaner(CleanupConfig(on="always")).clean(audio, success=True)
+
+    def test_html_format_removes_html_files(self, tmp_path):
+        audio = tmp_path / "call.mp3"
+        audio.touch()
+        outputs = _make_outputs(audio, ext=".html")
+
+        Cleaner(CleanupConfig(on="success"), output_format="html").clean(audio, success=True)
+
+        assert not any(f.exists() for f in outputs)
+
+    def test_html_format_does_not_remove_txt_files(self, tmp_path):
+        audio = tmp_path / "call.mp3"
+        audio.touch()
+        txt = audio.with_name("call.txt")
+        txt.write_text("x")
+
+        Cleaner(CleanupConfig(targets=[""], on="success"), output_format="html").clean(audio, success=True)
+
+        assert txt.exists()

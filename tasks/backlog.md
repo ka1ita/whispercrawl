@@ -101,3 +101,17 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] `deploy/dev/build-prod.sh`: pull and save `whisper.tar` and `ollama.tar` alongside `whispercrawl.tar`; write all three into both `deploy/prod/dist/` and `deploy/prod-local/dist/`
 
 <!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-022: Configurable Output Format (TXT / HTML)
+
+- [x] `config.py`: add `output_format: str = "txt"` to `Config`; validate in `load_config` (raise `ValueError` on unknown value)
+- [x] `config.py`: change all `output_suffix` / `error_suffix` defaults to label-only (no extension): `""`, `"_fix"`, `"_sum"`, `"_err"`; update `CleanupConfig.targets` to `["", "_fix", "_sum", "_diarize.json"]`
+- [x] `main.py`: add `output_path(base, suffix, fmt) -> Path` helper; replace all ad-hoc `with_name(stem + suffix)` calls with it; apply to both file and dir output paths
+- [x] `main.py`: add `render_output(text, fmt) -> str` helper (identity for `"txt"`, minimal HTML shell with escaped content for `"html"`); apply before every `write_text` call in `run_pipeline`
+- [x] `file_walker.py`: pass `output_format` to `iter_media_files`; derive skip-check extension from format
+- [x] `pipeline/summarizer.py`: update `summarize_directory` glob pattern to use format-derived extension
+- [x] `pipeline/cleaner.py`: make `Cleaner` format-aware; derive extension from `output_format`
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `output_format: txt`; update all suffix fields to label-only form; update `cleanup.targets`
+- [x] Tests: update existing suffix expectations; add cases — TXT path unchanged; HTML wraps + escapes; `--cleanup` removes `.html` outputs when format is html

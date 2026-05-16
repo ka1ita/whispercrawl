@@ -36,10 +36,10 @@ ruff check src tests
 ruff format src tests
 
 # Start dev services (whisper + ollama via Docker; gemma3:1b is pulled automatically on first start)
-docker compose -f deploy/dev/docker-compose.dev.yml up -d
+docker compose -f deploy/dev/docker-compose.dev.yml --env-file .env up -d
 
 # Rebuild whispercrawl image after changing src/ or pyproject.toml
-docker compose -f deploy/dev/docker-compose.dev.yml up -d --build whispercrawl
+docker compose -f deploy/dev/docker-compose.dev.yml --env-file .env up -d --build whispercrawl
 ```
 
 ## Architecture

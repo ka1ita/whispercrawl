@@ -10,15 +10,21 @@ logger = logging.getLogger(__name__)
 
 
 class Cleaner:
-    def __init__(self, config: CleanupConfig) -> None:
+    def __init__(self, config: CleanupConfig, output_format: str = "txt") -> None:
         self.config = config
+        self._ext = ".html" if output_format == "html" else ".txt"
 
     def clean(self, file_path: Path, success: bool) -> None:
         """Remove configured output files for file_path after a pipeline run."""
         if self.config.on == "success" and not success:
             return
         for suffix in self.config.targets:
-            output = file_path.with_name(file_path.stem + suffix)
+            name = (
+                file_path.stem + suffix
+                if suffix.endswith(".json")
+                else file_path.stem + suffix + self._ext
+            )
+            output = file_path.with_name(name)
             if output.exists():
                 output.unlink()
                 logger.info("Cleaned: %s", output)

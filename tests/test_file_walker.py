@@ -28,17 +28,29 @@ class TestDetectLanguage:
 class TestIterMediaFiles:
     def test_skips_already_transcribed(self, media_dir: Path):
         # call.txt exists → call.mp4 should be skipped
-        files = list(iter_media_files(media_dir, EXTENSIONS, ".txt", rescan=False))
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="txt"))
         names = [f.name for f in files]
         assert "call.mp4" not in names
         assert "meeting_ru.mp3" in names
 
     def test_rescan_includes_all(self, media_dir: Path):
-        files = list(iter_media_files(media_dir, EXTENSIONS, ".txt", rescan=True))
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
         names = [f.name for f in files]
         assert "call.mp4" in names
         assert "meeting_ru.mp3" in names
 
     def test_ignores_non_media_files(self, media_dir: Path):
-        files = list(iter_media_files(media_dir, EXTENSIONS, ".txt", rescan=True))
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
         assert all(f.suffix in EXTENSIONS for f in files)
+
+    def test_skips_already_transcribed_html_format(self, tmp_path: Path):
+        (tmp_path / "rec.mp3").touch()
+        (tmp_path / "rec.html").touch()  # html transcript already exists
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, output_format="html"))
+        assert [f.name for f in files] == []
+
+    def test_html_format_does_not_skip_txt_output(self, media_dir: Path):
+        # call.txt exists but format is html → call.mp4 should NOT be skipped
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="html"))
+        names = [f.name for f in files]
+        assert "call.mp4" in names
