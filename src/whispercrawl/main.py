@@ -1,4 +1,4 @@
-﻿"""CLI entry point for whispercrawl."""
+"""CLI entry point for whispercrawl."""
 from __future__ import annotations
 
 import argparse
@@ -41,14 +41,14 @@ def render_output(text: str, fmt: str) -> str:
     )
 
 
-def _write_error(file_path: Path, error_suffix: str, fmt: str, message: str) -> None:
-    err_path = output_path(file_path, error_suffix, fmt)
+def _write_error(file_path: Path, error_suffix: str, message: str) -> None:
+    err_path = output_path(file_path, error_suffix, "txt")
     err_path.write_text(message, encoding="utf-8")
 
 
 def run_cleanup(config: Config, dry_run: bool = False) -> None:
     """Delete pipeline output files under watch_dir without running the pipeline."""
-    fmt = config.output_format
+    fmt = config.formatter.format
     targets = config.cleanup.targets
     removed = 0
 
@@ -93,8 +93,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
                     logger.info("Cleaned: %s", dir_sum)
                 removed += 1
 
-    # Remove all error files unconditionally (not restricted to cleanup.targets)
-    ext = ".html" if fmt == "html" else ".txt"
+    # Remove all error files unconditionally (always written as .txt)
     err_suffixes = {
         config.transcription.error_suffix,
         config.postprocessing.error_suffix,
@@ -102,7 +101,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         config.dir_summarization.error_suffix,
     }
     for suffix in sorted(err_suffixes):
-        for err_file in sorted(config.watch_dir.rglob(f"*{suffix}{ext}")):
+        for err_file in sorted(config.watch_dir.rglob(f"*{suffix}.txt")):
             if dry_run:
                 logger.info("Would clean: %s", err_file)
             else:
@@ -118,6 +117,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
     """Execute the full pipeline for all matching files."""
     from whispercrawl.file_walker import iter_media_files
     from whispercrawl.pipeline.cleaner import Cleaner
+    from whispercrawl.pipeline.formatter import Formatter
     from whispercrawl.pipeline.postprocessor import PostProcessor, PostProcessingError
     from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
     from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
@@ -128,7 +128,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.extensions,
         config.transcription.output_suffix,
         config.rescan,
-        config.output_format,
+        config.formatter.format,
     ))
 
     if dry_run:
@@ -138,7 +138,8 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             logger.info("Would process: %s", f)
         return
 
-    fmt = config.output_format
+    fmt = config.formatter.format
+    formatter = Formatter(fmt if config.formatter.enabled else "txt")
     cleaner = Cleaner(config.cleanup, fmt) if cleanup else None
 
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
@@ -166,31 +167,34 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 transcript = transcriber.transcribe(file_path)
             except TranscriptionError as e:
                 logger.error("Transcription failed for %s: %s", file_path, e)
-                _write_error(file_path, config.transcription.error_suffix, fmt, str(e))
+                _write_error(file_path, config.transcription.error_suffix, str(e))
                 if cleaner:
                     cleaner.clean(file_path, success=False)
                 continue
 
-            txt_path = output_path(file_path, config.transcription.output_suffix, fmt)
-            txt_path.write_text(render_output(transcript, fmt), encoding="utf-8")
+            txt_path = output_path(file_path, config.transcription.output_suffix, "txt")
+            txt_path.write_text(transcript, encoding="utf-8")
             logger.info("Transcript written: %s", txt_path)
             dirs_with_files.add(file_path.parent)
 
+            # Track output files written for this media file; Formatter converts them at end
+            files_to_format = [txt_path]
             fixed_text = None
 
             if postprocessor:
                 try:
                     fixed_text = postprocessor.process(transcript)
-                    fix_path = output_path(file_path, config.postprocessing.output_suffix, fmt)
-                    fix_path.write_text(render_output(fixed_text, fmt), encoding="utf-8")
+                    fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
+                    fix_path.write_text(fixed_text, encoding="utf-8")
                     if config.postprocessing.replace_transcription:
                         fix_path.replace(txt_path)
                         logger.info("Replaced transcript with post-processed: %s", txt_path)
                     else:
+                        files_to_format.append(fix_path)
                         logger.info("Post-processed: %s", fix_path)
                 except PostProcessingError as e:
                     logger.error("Post-processing failed for %s: %s", file_path, e)
-                    _write_error(file_path, config.postprocessing.error_suffix, fmt, str(e))
+                    _write_error(file_path, config.postprocessing.error_suffix, str(e))
                     success = False
 
             if file_summarizer:
@@ -202,19 +206,24 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 )
                 try:
                     summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
-                    sum_path = output_path(file_path, config.file_summarization.output_suffix, fmt)
-                    sum_path.write_text(render_output(summary, fmt), encoding="utf-8")
+                    sum_path = output_path(file_path, config.file_summarization.output_suffix, "txt")
+                    sum_path.write_text(summary, encoding="utf-8")
+                    files_to_format.append(sum_path)
                     logger.info("File summary written: %s", sum_path)
                 except SummarizationError as e:
                     logger.error("File summarization failed for %s: %s", file_path, e)
-                    _write_error(file_path, config.file_summarization.error_suffix, fmt, str(e))
+                    _write_error(file_path, config.file_summarization.error_suffix, str(e))
                     success = False
+
+            for path in files_to_format:
+                if path.exists():
+                    formatter.format_file(path)
 
             if cleaner:
                 cleaner.clean(file_path, success)
 
             if success:
-                err_path = output_path(file_path, config.transcription.error_suffix, fmt)
+                err_path = output_path(file_path, config.transcription.error_suffix, "txt")
                 if err_path.exists():
                     err_path.unlink()
                     logger.debug("Removed stale error file: %s", err_path)
@@ -222,14 +231,15 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         if dir_summarizer:
             for dir_path in sorted(dirs_with_files):
                 dir_base = dir_path / dir_path.name
-                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, fmt)
+                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
                 try:
                     dir_summary = dir_summarizer.summarize_directory(
-                        dir_path, config.file_summarization.output_suffix, fmt
+                        dir_path, config.file_summarization.output_suffix
                     )
-                    dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, fmt)
-                    dir_sum_path.write_text(render_output(dir_summary, fmt), encoding="utf-8")
-                    logger.info("Directory summary written: %s", dir_sum_path)
+                    dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, "txt")
+                    dir_sum_path.write_text(dir_summary, encoding="utf-8")
+                    final_dir_sum_path = formatter.format_file(dir_sum_path)
+                    logger.info("Directory summary written: %s", final_dir_sum_path)
                     if dir_err_path.exists():
                         dir_err_path.unlink()
                         logger.debug("Removed stale error file: %s", dir_err_path)

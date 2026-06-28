@@ -115,3 +115,28 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] `pipeline/cleaner.py`: make `Cleaner` format-aware; derive extension from `output_format`
 - [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `output_format: txt`; update all suffix fields to label-only form; update `cleanup.targets`
 - [x] Tests: update existing suffix expectations; add cases — TXT path unchanged; HTML wraps + escapes; `--cleanup` removes `.html` outputs when format is html
+
+<!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-023: Centralize Output Format Conversion in a Final Formatter Step
+
+- [x] `pipeline/formatter.py`: create `Formatter` class with `format_file(txt_path) -> Path` (no-op for `"txt"`; read→wrap→write `.html`→delete `.txt` for `"html"`)
+- [x] `main.py`: remove `render_output()` from every `write_text()` call in `run_pipeline()`; pipeline steps always write plain `.txt`
+- [x] `main.py`: after each file's steps complete, call `formatter.format_file()` for each written output path; after each dir summary, call `formatter.format_file()` for the dir summary; error files always written as `.txt`
+- [x] `pipeline/summarizer.py`: remove `output_format` parameter from `summarize_directory()`; always glob `*{suffix}.txt`
+- [x] Tests: `test_formatter.py` (unit); html run → no orphan `.txt` output files; txt run → `.txt` present, no `.html`; dir summarizer reads plain `.txt` only; `replace_transcription` still works end-to-end
+
+<!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-024: Formatter Config Section
+
+- [x] `config.py`: add `FormatterConfig` dataclass (`format: str = "txt"`, `enabled: bool = True`); replace `Config.output_format` with `Config.formatter: FormatterConfig`; move format validation into `load_config` after building `FormatterConfig`
+- [x] `main.py`: replace all `config.output_format` with `config.formatter.format`; when `enabled: false`, pass `"txt"` to `Formatter` (no-op) regardless of `format`
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: replace top-level `output_format:` with `formatter:` section (`format:` + commented `enabled:`)
+- [x] Tests: update all `Config(output_format=...)` constructions to `Config(formatter=FormatterConfig(...))`; add test that `enabled: false` with `format: html` leaves files as `.txt`
+
+<!-- all tasks complete — see done.md -->

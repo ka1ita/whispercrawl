@@ -1,4 +1,4 @@
-"""Tests for output_format: helpers, HTML rendering, format validation, HTML pipeline output."""
+"""Tests for formatter config, helpers, HTML rendering, and pipeline output."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,6 +9,7 @@ import pytest
 from whispercrawl.config import (
     CleanupConfig,
     Config,
+    FormatterConfig,
     LoggingConfig,
     OllamaStepConfig,
     ScheduleConfig,
@@ -78,7 +79,7 @@ class TestFormatValidation:
     def _write_config(self, tmp_path: Path, fmt: str) -> Path:
         p = tmp_path / "config.yaml"
         p.write_text(
-            f"watch_dir: {tmp_path}\nextensions: [.mp3]\noutput_format: {fmt}\n",
+            f"watch_dir: {tmp_path}\nextensions: [.mp3]\nformatter:\n  format: {fmt}\n",
             encoding="utf-8",
         )
         return p
@@ -86,16 +87,16 @@ class TestFormatValidation:
     def test_txt_accepted(self, tmp_path):
         from whispercrawl.config import load_config
         cfg = load_config(self._write_config(tmp_path, "txt"))
-        assert cfg.output_format == "txt"
+        assert cfg.formatter.format == "txt"
 
     def test_html_accepted(self, tmp_path):
         from whispercrawl.config import load_config
         cfg = load_config(self._write_config(tmp_path, "html"))
-        assert cfg.output_format == "html"
+        assert cfg.formatter.format == "html"
 
     def test_unknown_format_raises(self, tmp_path):
         from whispercrawl.config import load_config
-        with pytest.raises(ValueError, match="output_format"):
+        with pytest.raises(ValueError, match="formatter.format"):
             load_config(self._write_config(tmp_path, "pdf"))
 
     def test_default_is_txt_when_absent(self, tmp_path):
@@ -103,7 +104,25 @@ class TestFormatValidation:
         p = tmp_path / "config.yaml"
         p.write_text(f"watch_dir: {tmp_path}\nextensions: [.mp3]\n", encoding="utf-8")
         cfg = load_config(p)
-        assert cfg.output_format == "txt"
+        assert cfg.formatter.format == "txt"
+
+    def test_enabled_defaults_to_true(self, tmp_path):
+        from whispercrawl.config import load_config
+        p = tmp_path / "config.yaml"
+        p.write_text(f"watch_dir: {tmp_path}\nextensions: [.mp3]\n", encoding="utf-8")
+        cfg = load_config(p)
+        assert cfg.formatter.enabled is True
+
+    def test_enabled_can_be_set_false(self, tmp_path):
+        from whispercrawl.config import load_config
+        p = tmp_path / "config.yaml"
+        p.write_text(
+            f"watch_dir: {tmp_path}\nextensions: [.mp3]\nformatter:\n  format: html\n  enabled: false\n",
+            encoding="utf-8",
+        )
+        cfg = load_config(p)
+        assert cfg.formatter.enabled is False
+        assert cfg.formatter.format == "html"
 
 
 # ── HTML pipeline output ──────────────────────────────────────────────────────
@@ -113,7 +132,7 @@ def _html_config(tmp_path: Path) -> Config:
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=True,
-        output_format="html",
+        formatter=FormatterConfig(format="html"),
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
@@ -165,6 +184,34 @@ class TestHtmlPipelineOutput:
         assert "&gt;" in content
 
 
+# ── formatter enabled=false ───────────────────────────────────────────────────
+
+class TestFormatterDisabled:
+    def test_enabled_false_leaves_txt_even_when_format_is_html(self, tmp_path):
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+        cfg = Config(
+            watch_dir=tmp_path,
+            extensions=[".mp3"],
+            rescan=True,
+            formatter=FormatterConfig(format="html", enabled=False),
+            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
+            file_summarization=OllamaStepConfig(llm_enabled=False),
+            dir_summarization=OllamaStepConfig(llm_enabled=False),
+            schedule=ScheduleConfig(),
+            cleanup=CleanupConfig(targets=[]),
+            logging=LoggingConfig(),
+        )
+        with patch(
+            "whispercrawl.pipeline.transcriber.httpx.post",
+            return_value=_mock_ok("transcript text"),
+        ):
+            run_pipeline(cfg)
+
+        assert (tmp_path / "rec.txt").exists()
+        assert not (tmp_path / "rec.html").exists()
+
+
 # ── HTML cleanup ──────────────────────────────────────────────────────────────
 
 class TestHtmlCleanup:
@@ -179,7 +226,7 @@ class TestHtmlCleanup:
         cfg = Config(
             watch_dir=tmp_path,
             extensions=[".mp3"],
-            output_format="html",
+            formatter=FormatterConfig(format="html"),
             cleanup=CleanupConfig(targets=["", "_fix"], on="success"),
             logging=LoggingConfig(),
         )
@@ -198,13 +245,94 @@ class TestHtmlCleanup:
         cfg = Config(
             watch_dir=tmp_path,
             extensions=[".mp3"],
-            output_format="html",
+            formatter=FormatterConfig(format="html"),
             cleanup=CleanupConfig(targets=[""], on="success"),
             logging=LoggingConfig(),
         )
         run_cleanup(cfg)
 
         assert txt_out.exists()
+
+
+# ── TXT pipeline output ───────────────────────────────────────────────────────
+
+def _txt_config(tmp_path: Path) -> Config:
+    return Config(
+        watch_dir=tmp_path,
+        extensions=[".mp3"],
+        rescan=True,
+        formatter=FormatterConfig(format="txt"),
+        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
+        file_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        schedule=ScheduleConfig(),
+        cleanup=CleanupConfig(targets=[]),
+        logging=LoggingConfig(),
+    )
+
+
+class TestTxtPipelineOutput:
+    def test_txt_format_writes_txt_extension(self, tmp_path):
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+
+        with patch(
+            "whispercrawl.pipeline.transcriber.httpx.post",
+            return_value=_mock_ok("transcript text"),
+        ):
+            run_pipeline(_txt_config(tmp_path))
+
+        assert (tmp_path / "rec.txt").exists()
+        assert not (tmp_path / "rec.html").exists()
+
+    def test_txt_file_contains_plain_text(self, tmp_path):
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+
+        with patch(
+            "whispercrawl.pipeline.transcriber.httpx.post",
+            return_value=_mock_ok("transcript text"),
+        ):
+            run_pipeline(_txt_config(tmp_path))
+
+        assert (tmp_path / "rec.txt").read_text(encoding="utf-8") == "transcript text"
+
+
+# ── Dir summarizer reads plain .txt ──────────────────────────────────────────
+
+class TestDirSummarizerReadsPlainText:
+    def test_summarize_directory_reads_txt_in_html_mode(self, tmp_path):
+        """Dir summarizer globs .txt regardless of formatter.format."""
+        from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
+        from unittest.mock import MagicMock
+
+        (tmp_path / "rec_sum.txt").write_text("plain summary", encoding="utf-8")
+
+        summarizer = Summarizer(
+            OllamaStepConfig(llm_enabled=True, output_suffix="_sum"),
+        )
+        captured = []
+
+        def fake_call(text, file=""):
+            captured.append(text)
+            return "combined"
+
+        summarizer._call_ollama = fake_call
+        result = summarizer.summarize_directory(tmp_path, "_sum")
+
+        assert result == "combined"
+        assert captured[0] == "plain summary"
+
+    def test_summarize_directory_ignores_html_files(self, tmp_path):
+        """Even if .html files are present, dir summarizer only reads .txt."""
+        from whispercrawl.pipeline.summarizer import Summarizer
+
+        (tmp_path / "rec_sum.html").write_text("<html>html summary</html>", encoding="utf-8")
+
+        summarizer = Summarizer(OllamaStepConfig(llm_enabled=True, output_suffix="_sum"))
+
+        from whispercrawl.pipeline.summarizer import SummarizationError
+        with pytest.raises(SummarizationError, match="No summary files"):
+            summarizer.summarize_directory(tmp_path, "_sum")
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

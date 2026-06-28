@@ -15,8 +15,10 @@ extensions:
 
 rescan: false
 
-# Output format for all pipeline steps: txt | html
-output_format: txt
+# ── Formatter ─────────────────────────────────────────────────────────────────
+formatter:
+  format: txt               # txt | html (default: txt)
+  # enabled: true           # set to false to skip format conversion
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:

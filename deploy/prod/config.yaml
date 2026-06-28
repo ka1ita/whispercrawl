@@ -19,15 +19,17 @@ extensions:
 #   true  = reprocess all files regardless of existing output
 rescan: false
 
-# Output format for all pipeline steps: txt | html
-output_format: txt
+# ── Formatter ─────────────────────────────────────────────────────────────────
+formatter:
+  format: txt               # txt | html (default: txt)
+  # enabled: true           # set to false to skip format conversion
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
   url: ${WHISPER_URL:http://localhost:9000}   # whisper-asr-webservice base URL
   language: ru                    # Default language: auto, ru, en, etc.
   diarize: true                    # Enable speaker diarization (requires HF_TOKEN in whisper container for whisperx)
-  output_suffix: ""                 # Suffix label (extension comes from output_format)
+  output_suffix: ""                 # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
   # initial_prompt: ""                # Hint text passed to the model
@@ -47,7 +49,7 @@ postprocessing:
     Верни только исправленный текст без пояснений.
   regex_patterns:
     - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
-  output_suffix: _fix                # Suffix label (extension comes from output_format)
+  output_suffix: _fix                # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
   replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
@@ -61,7 +63,7 @@ file_summarization:
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  output_suffix: _sum               # Suffix label (extension comes from output_format)
+  output_suffix: _sum               # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 300                      # HTTP timeout in seconds
 
@@ -74,12 +76,12 @@ dir_summarization:
     Ниже приведены резюме нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  output_suffix: _sum               # Suffix label (extension comes from output_format)
+  output_suffix: _sum               # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 300                      # HTTP timeout in seconds
 
 # ── Cleanup (used with --cleanup / --once --cleanup flags) ───────────────────
-# targets: suffix labels to remove (extension derived from output_format; _diarize.json always literal)
+# targets: suffix labels to remove (extension derived from formatter.format; _diarize.json always literal)
 # on: "success" — only clean when all pipeline steps succeeded
 #     "always"  — clean even after a failed step
 cleanup:

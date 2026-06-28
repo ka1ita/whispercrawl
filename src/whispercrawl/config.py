@@ -61,6 +61,12 @@ class CleanupConfig:
 
 
 @dataclass
+class FormatterConfig:
+    format: str = "txt"   # "txt" | "html"
+    enabled: bool = True  # false = skip conversion; files stay as .txt
+
+
+@dataclass
 class LoggingConfig:
     requests: bool = False
     diarize_log: bool = False            # save raw JSON diarization response to <file>_diarize.json
@@ -78,7 +84,7 @@ class Config:
     watch_dir: Path
     extensions: List[str]
     rescan: bool = False  # False = skip-processed, True = full rescan
-    output_format: str = "txt"  # "txt" | "html"
+    formatter: FormatterConfig = field(default_factory=FormatterConfig)
 
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix"))
@@ -99,16 +105,16 @@ def load_config(path: Path) -> Config:
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(_expand_env(f.read()))
 
-    fmt = raw.get("output_format", "txt")
-    if fmt not in ("txt", "html"):
-        raise ValueError(f"output_format must be 'txt' or 'html', got {fmt!r}")
+    formatter_cfg = _build(FormatterConfig, raw.get("formatter", {}))
+    if formatter_cfg.format not in ("txt", "html"):
+        raise ValueError(f"formatter.format must be 'txt' or 'html', got {formatter_cfg.format!r}")
 
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=Path(raw["watch_dir"]),
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
-        output_format=fmt,
+        formatter=formatter_cfg,
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),

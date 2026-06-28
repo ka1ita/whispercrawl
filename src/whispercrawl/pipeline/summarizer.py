@@ -65,11 +65,10 @@ class Summarizer:
         """Summarize a single transcription."""
         return self._call_ollama(text, file=file)
 
-    def summarize_directory(self, dir_path: Path, file_sum_suffix: str, output_format: str = "txt") -> str:
+    def summarize_directory(self, dir_path: Path, file_sum_suffix: str) -> str:
         """Collect all per-file summaries in dir_path and produce a combined summary."""
-        ext = ".html" if output_format == "html" else ".txt"
         parts = []
-        for summary_file in sorted(dir_path.glob(f"*{file_sum_suffix}{ext}")):
+        for summary_file in sorted(dir_path.glob(f"*{file_sum_suffix}.txt")):
             parts.append(summary_file.read_text(encoding="utf-8"))
         if not parts:
             raise SummarizationError(f"No summary files found in {dir_path}")
