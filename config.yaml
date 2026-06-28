@@ -17,7 +17,7 @@ extensions:
 # Processing mode:
 #   false = skip files that already have output (default)
 #   true  = reprocess all files regardless of existing output
-rescan: true
+rescan: false
 
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
