@@ -26,7 +26,12 @@ def _pick_summary_input(
 
 
 def output_path(base: Path, suffix: str, fmt: str) -> Path:
-    ext = ".html" if fmt == "html" else ".txt"
+    if fmt == "html":
+        ext = ".html"
+    elif fmt == "md":
+        ext = ".md"
+    else:
+        ext = ".txt"
     return base.with_name(base.stem + suffix + ext)
 
 
@@ -139,7 +144,11 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         return
 
     fmt = config.formatter.format
-    formatter = Formatter(fmt if config.formatter.enabled else "txt")
+    formatter = Formatter(
+        fmt if config.formatter.enabled else "txt",
+        speaker_style=config.formatter.speaker_style,
+        text_placement=config.formatter.text_placement,
+    )
     cleaner = Cleaner(config.cleanup, fmt) if cleanup else None
 
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:

@@ -145,3 +145,114 @@ class TestFormatterMd:
         result = Formatter("html").format_file(p_html)
         assert result.suffix == ".html"
         assert not (tmp_path / "b.md").exists()
+
+
+_DIARIZED = "[SPEAKER_00]: Hello world\n[SPEAKER_01]: How are you"
+
+
+class TestFormatterMdSpeakerStyle:
+    def test_bold_same_line(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "**[SPEAKER_00]:** Hello world" in content
+        assert "**[SPEAKER_01]:** How are you" in content
+
+    def test_italic_same_line(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("md", speaker_style="italic", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "*[SPEAKER_00]:* Hello world" in content
+        assert "*[SPEAKER_01]:* How are you" in content
+
+    def test_bold_new_line(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "**[SPEAKER_00]:**\nHello world" in content
+        assert "**[SPEAKER_01]:**\nHow are you" in content
+
+    def test_italic_new_line(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("md", speaker_style="italic", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "*[SPEAKER_00]:*\nHello world" in content
+
+    def test_plain_same_line(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("md", speaker_style="plain", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "[SPEAKER_00]: Hello world" in content
+        assert "**" not in content
+        assert content.count("*") == 0
+
+    def test_no_speaker_labels_unchanged(self, tmp_path):
+        text = "This is plain text\nNo speakers here"
+        p = tmp_path / "rec.txt"
+        p.write_text(text, encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="same_line").format_file(p)
+        assert (tmp_path / "rec.md").read_text(encoding="utf-8") == text
+
+    def test_txt_format_style_fields_ignored(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text("[SPEAKER_00]: hello", encoding="utf-8")
+        result = Formatter("txt", speaker_style="bold", text_placement="same_line").format_file(p)
+        assert result == p
+        assert p.read_text(encoding="utf-8") == "[SPEAKER_00]: hello"
+
+    def test_trailing_newline_preserved(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text("[SPEAKER_00]: Hello\n", encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="same_line").format_file(p)
+        assert (tmp_path / "rec.md").read_text(encoding="utf-8").endswith("\n")
+
+
+class TestFormatterHtmlSpeakerStyle:
+    def test_bold_same_line_uses_strong(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00]:</strong> Hello world" in content
+        assert "<pre>" not in content
+
+    def test_italic_same_line_uses_em(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="italic", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<em>[SPEAKER_00]:</em> Hello world" in content
+
+    def test_bold_new_line_inserts_br(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00]:</strong><br>Hello world" in content
+
+    def test_italic_new_line_uses_em_and_br(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="italic", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<em>[SPEAKER_00]:</em><br>Hello world" in content
+
+    def test_no_speaker_labels_falls_back_to_pre(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text("plain text", encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<pre>plain text</pre>" in content
+
+    def test_diarized_html_wrapped_in_p_tags(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert content.count("<p>") == 2
+        assert content.count("</p>") == 2

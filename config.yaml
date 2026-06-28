@@ -21,8 +21,10 @@ rescan: false
 
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
-  format: md              # txt | html | md (default: txt)
+  format: html              # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
+  # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
+  # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:

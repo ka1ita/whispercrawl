@@ -62,8 +62,10 @@ class CleanupConfig:
 
 @dataclass
 class FormatterConfig:
-    format: str = "txt"   # "txt" | "html"
-    enabled: bool = True  # false = skip conversion; files stay as .txt
+    format: str = "txt"              # "txt" | "html" | "md"
+    enabled: bool = True             # false = skip conversion; files stay as .txt
+    speaker_style: str = "bold"      # "bold" | "italic" | "plain"
+    text_placement: str = "same_line"  # "same_line" | "new_line"
 
 
 @dataclass
@@ -108,6 +110,10 @@ def load_config(path: Path) -> Config:
     formatter_cfg = _build(FormatterConfig, raw.get("formatter", {}))
     if formatter_cfg.format not in ("txt", "html", "md"):
         raise ValueError(f"formatter.format must be 'txt', 'html', or 'md', got {formatter_cfg.format!r}")
+    if formatter_cfg.speaker_style not in ("bold", "italic", "plain"):
+        raise ValueError(f"formatter.speaker_style must be 'bold', 'italic', or 'plain', got {formatter_cfg.speaker_style!r}")
+    if formatter_cfg.text_placement not in ("same_line", "new_line"):
+        raise ValueError(f"formatter.text_placement must be 'same_line' or 'new_line', got {formatter_cfg.text_placement!r}")
 
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
