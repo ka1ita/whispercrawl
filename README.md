@@ -7,10 +7,14 @@ audio/video file
   → Transcription (whisper)   → <file>.txt
   → Post-processing (ollama)  → <file>_fix.txt
   → Per-file summary (ollama) → <file>_sum.txt
+  → Formatter                 → converts .txt outputs to .md or .html
 
 after all files in a directory:
   → Directory summary (ollama) → <dirname>_sum.txt
+  → Formatter                  → converts directory summary
 ```
+
+Output extension depends on `formatter.format` (`txt` / `md` / `html`).
 
 ---
 
@@ -122,7 +126,7 @@ whispercrawl --config config.yaml --once
 | --- | --- | --- | --- |
 | *(root)* | `watch_dir` | — | Directory to scan recursively |
 | | `extensions` | — | File extensions to process (e.g. `.mp3`, `.wav`) |
-| | `rescan` | `false` | `true` = reprocess files that already have a `.txt` output |
+| | `rescan` | `false` | `true` = reprocess files that already have output in any format (`.txt`, `.md`, or `.html`) |
 | `transcription` | `url` | `http://localhost:9000` | whisper-asr-webservice base URL |
 | | `language` | `auto` | Language code or `auto` |
 | | `diarize` | `false` | Enable speaker diarization |
@@ -137,7 +141,11 @@ whispercrawl --config config.yaml --once
 | `dir_summarization` | `llm_enabled` | `true` | Generate per-directory summary from per-file summaries |
 | `schedule` | `interval` | — | e.g. `30m`, `1h`, `600s` |
 | | `cron` | — | Standard cron expression, e.g. `"0 * * * *"` |
-| `cleanup` | `targets` | `.txt _fix.txt _sum.txt` | Output suffixes to remove on cleanup |
+| `formatter` | `format` | `txt` | Output format: `txt` \| `html` \| `md` |
+| | `enabled` | `true` | `false` = skip format conversion; files stay as `.txt` |
+| | `speaker_style` | `bold` | Speaker label emphasis (html/md only): `bold` \| `italic` \| `plain` |
+| | `text_placement` | `same_line` | Transcript placement after speaker label: `same_line` \| `new_line` |
+| `cleanup` | `targets` | `"" _fix _sum _diarize.json` | Output label suffixes to remove on cleanup |
 | | `on` | `success` | `success` = only clean after full success; `always` = clean regardless |
 | `logging` | `app_log_file` | *(console only)* | Path to rotating application log file |
 | | `app_log_level` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
@@ -162,11 +170,15 @@ For each audio/video file `<stem>.<ext>` the pipeline writes:
 
 | File | Produced by | When |
 | --- | --- | --- |
-| `<stem>.txt` | Transcription | Always on success |
-| `<stem>_fix.txt` | Post-processing | When `postprocessing.llm_enabled` or `regex_enabled` |
-| `<stem>_sum.txt` | Per-file summary | When `file_summarization.llm_enabled` |
-| `<dirname>_sum.txt` | Directory summary | When `dir_summarization.llm_enabled`, after all files in dir |
-| `<stem>_err.txt` | Any step | On error — contains the error message |
+| `<stem>.<fmt>` | Transcription + Formatter | Always on success |
+| `<stem>_fix.<fmt>` | Post-processing + Formatter | When `postprocessing.llm_enabled` or `regex_enabled` |
+| `<stem>_sum.<fmt>` | Per-file summary + Formatter | When `file_summarization.llm_enabled` |
+| `<dirname>_sum.<fmt>` | Directory summary + Formatter | When `dir_summarization.llm_enabled`, after all files in dir |
+| `<stem>_err.txt` | Any step | On error — always `.txt` regardless of format |
+
+`<fmt>` is `txt`, `md`, or `html` depending on `formatter.format` (default `txt`).
+
+All pipeline steps write plain `.txt` internally; the Formatter converts to the final format and removes the `.txt` originals.
 
 ---
 
