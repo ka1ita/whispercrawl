@@ -171,6 +171,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         )
 
         dirs_with_files: set[Path] = set()
+        all_outputs_to_format: list[Path] = []
 
         for file_path in files:
             logger.info("Processing: %s", file_path)
@@ -231,9 +232,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                     _write_error(file_path, config.file_summarization.error_suffix, str(e))
                     success = False
 
-            for path in files_to_format:
-                if path.exists():
-                    formatter.format_file(path)
+            all_outputs_to_format.extend(files_to_format)
 
             if cleanup:
                 cleaner.clean(file_path, success)
@@ -254,14 +253,18 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                     )
                     dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, "txt")
                     dir_sum_path.write_text(dir_summary, encoding="utf-8")
-                    final_dir_sum_path = formatter.format_file(dir_sum_path)
-                    logger.info("Directory summary written: %s", final_dir_sum_path)
+                    all_outputs_to_format.append(dir_sum_path)
+                    logger.info("Directory summary written: %s", dir_sum_path)
                     if dir_err_path.exists():
                         dir_err_path.unlink()
                         logger.debug("Removed stale error file: %s", dir_err_path)
                 except SummarizationError as e:
                     logger.error("Directory summarization failed for %s: %s", dir_path, e)
                     dir_err_path.write_text(str(e), encoding="utf-8")
+
+        for path in all_outputs_to_format:
+            if path.exists():
+                formatter.format_file(path)
 
 
 def main() -> None:

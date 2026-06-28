@@ -335,6 +335,65 @@ class TestDirSummarizerReadsPlainText:
             summarizer.summarize_directory(tmp_path, "_sum")
 
 
+# ── Dir summarization runs before formatter (EPIC-030) ────────────────────────
+
+class TestDirSumAfterFormatter:
+    """Formatter must run after dir summarization so _sum.txt files are still present."""
+
+    def _config(self, tmp_path: Path, fmt: str) -> Config:
+        return Config(
+            watch_dir=tmp_path,
+            extensions=[".mp3"],
+            rescan=True,
+            formatter=FormatterConfig(format=fmt),
+            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
+            file_summarization=OllamaStepConfig(
+                llm_enabled=True,
+                output_suffix="_sum",
+                error_suffix="_err",
+            ),
+            dir_summarization=OllamaStepConfig(
+                llm_enabled=True,
+                output_suffix="_sum",
+                error_suffix="_err",
+            ),
+            schedule=ScheduleConfig(),
+            cleanup=CleanupConfig(targets=[]),
+            logging=LoggingConfig(),
+        )
+
+    def _run(self, tmp_path: Path, fmt: str) -> None:
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+        with (
+            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_ok("transcript")),
+            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_ok("summary")),
+        ):
+            run_pipeline(self._config(tmp_path, fmt))
+
+    def test_md_dir_sum_written_as_md(self, tmp_path):
+        self._run(tmp_path, "md")
+        assert (tmp_path / f"{tmp_path.name}_sum.md").exists()
+
+    def test_md_no_orphan_sum_txt(self, tmp_path):
+        self._run(tmp_path, "md")
+        assert not (tmp_path / "rec_sum.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+
+    def test_html_dir_sum_written_as_html(self, tmp_path):
+        self._run(tmp_path, "html")
+        assert (tmp_path / f"{tmp_path.name}_sum.html").exists()
+
+    def test_html_no_orphan_sum_txt(self, tmp_path):
+        self._run(tmp_path, "html")
+        assert not (tmp_path / "rec_sum.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+
+    def test_txt_dir_sum_succeeds(self, tmp_path):
+        self._run(tmp_path, "txt")
+        assert (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _mock_ok(text: str) -> MagicMock:

@@ -187,3 +187,14 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] Tests: MD bold same_line; MD italic new_line; MD plain same_line; HTML bold same_line; HTML em new_line; no speaker labels → content unchanged; `txt` format → style fields ignored
 
 <!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-030: Run Formatter After Directory Summarization
+
+- [x] `main.py`: remove `formatter.format_file()` calls from inside the per-file loop; accumulate all `files_to_format` paths only (no immediate conversion)
+- [x] `main.py`: after the dir-summarization loop, run `formatter.format_file()` on all accumulated per-file output paths
+- [x] `main.py`: collect dir summary paths and include them in the same final formatting pass
+- [x] Tests: `format: md`, file + dir summarization enabled → dir summary succeeds and is written as `.md`; no `_sum.txt` orphan files remain
+- [x] Tests: `format: html`, same conditions → dir summary written as `.html`
+- [x] Tests: `format: txt` → all outputs remain `.txt`; dir summary succeeds as before; no regressions
