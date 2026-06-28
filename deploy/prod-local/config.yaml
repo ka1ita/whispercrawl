@@ -17,7 +17,7 @@ rescan: false
 
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
-  format: txt               # txt | html (default: txt)
+  format: txt               # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
 
 # ── Transcription ─────────────────────────────────────────────────────────────

@@ -140,3 +140,14 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] Tests: update all `Config(output_format=...)` constructions to `Config(formatter=FormatterConfig(...))`; add test that `enabled: false` with `format: html` leaves files as `.txt`
 
 <!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-025: Add Markdown Format to Formatter
+
+- [x] `config.py`: add `"md"` to the allowed values in `load_config` format validation
+- [x] `pipeline/formatter.py`: add `"md"` branch to `format_file()` — read `.txt`, write `.md`, delete `.txt`
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: update `format:` comment to `txt | html | md`
+- [x] Tests: md run → `.md` produced, no orphan `.txt`; txt/html runs unaffected; `--cleanup` removes `.md` when format is `md`
+
+<!-- all tasks complete — see done.md -->

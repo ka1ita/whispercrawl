@@ -106,8 +106,8 @@ def load_config(path: Path) -> Config:
         raw = yaml.safe_load(_expand_env(f.read()))
 
     formatter_cfg = _build(FormatterConfig, raw.get("formatter", {}))
-    if formatter_cfg.format not in ("txt", "html"):
-        raise ValueError(f"formatter.format must be 'txt' or 'html', got {formatter_cfg.format!r}")
+    if formatter_cfg.format not in ("txt", "html", "md"):
+        raise ValueError(f"formatter.format must be 'txt', 'html', or 'md', got {formatter_cfg.format!r}")
 
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
