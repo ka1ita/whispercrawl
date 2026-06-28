@@ -136,20 +136,24 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.formatter.format,
     ))
 
+    fmt = config.formatter.format
+    cleaner = Cleaner(config.cleanup, fmt)
+    _rescan_labels = [s for s in config.cleanup.targets if not s.endswith(".json")]
+
     if dry_run:
         if not files:
             logger.info("No files to process in %s", config.watch_dir)
         for f in files:
             logger.info("Would process: %s", f)
+            if config.rescan:
+                cleaner.clean_other_formats(f, _rescan_labels, dry_run=True)
         return
 
-    fmt = config.formatter.format
     formatter = Formatter(
         fmt if config.formatter.enabled else "txt",
         speaker_style=config.formatter.speaker_style,
         text_placement=config.formatter.text_placement,
     )
-    cleaner = Cleaner(config.cleanup, fmt) if cleanup else None
 
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
         transcriber = Transcriber(config.transcription, svc_log, config.logging.diarize_log)
@@ -172,12 +176,15 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             logger.info("Processing: %s", file_path)
             success = True
 
+            if config.rescan:
+                cleaner.clean_other_formats(file_path, _rescan_labels)
+
             try:
                 transcript = transcriber.transcribe(file_path)
             except TranscriptionError as e:
                 logger.error("Transcription failed for %s: %s", file_path, e)
                 _write_error(file_path, config.transcription.error_suffix, str(e))
-                if cleaner:
+                if cleanup:
                     cleaner.clean(file_path, success=False)
                 continue
 
@@ -228,7 +235,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 if path.exists():
                     formatter.format_file(path)
 
-            if cleaner:
+            if cleanup:
                 cleaner.clean(file_path, success)
 
             if success:

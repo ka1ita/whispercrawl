@@ -170,6 +170,14 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-029: rescan: true Cleans Output Files in Other Formats
+
+- [x] `pipeline/cleaner.py`: add `clean_other_formats(file_path, suffix_labels, current_ext)` method — for each suffix label and each supported extension that is NOT current_ext, delete the file if it exists; log at INFO; skip `_err.txt` and `_diarize.json`
+- [x] `main.py`: in `run_pipeline()`, at the start of each file when `config.rescan` is true, call `cleaner.clean_other_formats()` with the configured suffix labels and current format extension; in dry-run mode, log what would be deleted without deleting
+- [x] Tests: `rescan: true`, orphan `.txt` when format is `md` → `.txt` outputs deleted; orphan `.md` when format is `html` → `.md` outputs deleted; orphan `.html` when format is `txt` → `.html` outputs deleted; `rescan: true`, no orphans → no-op; `rescan: false` → orphans untouched; `_err.txt` and `_diarize.json` never deleted; dry-run → logged but not deleted
+
+---
+
 ## EPIC-026: Formatter Speaker Style for HTML and MD
 
 - [x] `config.py`: add `speaker_style: str = "bold"` and `text_placement: str = "same_line"` to `FormatterConfig`; validate both in `load_config` (raise `ValueError` on unknown values)

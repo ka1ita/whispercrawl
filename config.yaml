@@ -17,11 +17,11 @@ extensions:
 # Processing mode:
 #   false = skip files that already have output (default)
 #   true  = reprocess all files regardless of existing output
-rescan: false
+rescan: true
 
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
-  format: md              # txt | html | md (default: txt)
+  format: html              # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
   # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
   # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
@@ -41,7 +41,7 @@ transcription:
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
-  llm_enabled: false    # LLM correction via ollama (default: true)
+  llm_enabled: true    # LLM correction via ollama (default: true)
   regex_enabled: true  # Regex cleanup pass (default: true)
   url: ${OLLAMA_URL:http://localhost:11434}       # ollama base URL
   model: gemma3:1b
@@ -58,7 +58,7 @@ postprocessing:
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
-  llm_enabled: false
+  llm_enabled: true
   summarize_source: postprocessed   # "postprocessed" (_fix) | "original" (transcript)
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
@@ -71,7 +71,7 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
-  llm_enabled: false
+  llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
   prompt: |

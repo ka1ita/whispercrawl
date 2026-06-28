@@ -34,6 +34,7 @@ Thumbs.db
 # Output files produced by the service (don't commit processed results)
 *.txt
 *.html
+audio/**/*.md
 !config/**/*.txt
 !docs/**/*.txt
 !tasks/**/*.txt
