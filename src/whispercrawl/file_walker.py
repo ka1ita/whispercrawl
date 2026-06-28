@@ -24,7 +24,12 @@ def iter_media_files(
     output_format: str = "txt",
 ) -> Generator[Path, None, None]:
     """Yield media files under root that need processing."""
-    ext = ".html" if output_format == "html" else ".txt"
+    if output_format == "html":
+        ext = ".html"
+    elif output_format == "md":
+        ext = ".md"
+    else:
+        ext = ".txt"
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue

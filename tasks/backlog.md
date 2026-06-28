@@ -151,3 +151,24 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] Tests: md run → `.md` produced, no orphan `.txt`; txt/html runs unaffected; `--cleanup` removes `.md` when format is `md`
 
 <!-- all tasks complete — see done.md -->
+
+---
+
+## EPIC-027: Cleanup and Skip-Check Use Format Extension for MD and HTML
+
+- [x] `main.py`: fix `output_path()` — add `elif fmt == "md": ext = ".md"` so all three formats return the correct extension
+- [x] `pipeline/cleaner.py`: fix `Cleaner.__init__` — derive `self._ext` for `"md"` the same way
+- [x] `file_walker.py`: fix `iter_media_files` — derive `ext` for `"md"` the same way
+- [x] Tests: `run_cleanup` with `format: md` removes `.md` files; `Cleaner` removes `.md` files; `iter_media_files` skips files when `.md` output already exists; existing txt/html cases must not regress
+
+---
+
+## EPIC-026: Formatter Speaker Style for HTML and MD
+
+- [x] `config.py`: add `speaker_style: str = "bold"` and `text_placement: str = "same_line"` to `FormatterConfig`; validate both in `load_config` (raise `ValueError` on unknown values)
+- [x] `pipeline/formatter.py`: add `_render_diarized(text) -> str` that parses `[SPEAKER_XX]: ...` lines and reformats per `speaker_style` / `text_placement`; apply in `md` and `html` branches; pass non-matching lines through unchanged
+- [x] `pipeline/formatter.py` HTML: replace `<pre>` block with `<p>` tags; apply `<strong>`/`<em>` to speaker label; `new_line` inserts `<br>` between label and text
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `speaker_style:` and `text_placement:` under `formatter:`
+- [x] Tests: MD bold same_line; MD italic new_line; MD plain same_line; HTML bold same_line; HTML em new_line; no speaker labels → content unchanged; `txt` format → style fields ignored
+
+<!-- all tasks complete — see done.md -->

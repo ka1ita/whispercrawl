@@ -54,3 +54,15 @@ class TestIterMediaFiles:
         files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="html"))
         names = [f.name for f in files]
         assert "call.mp4" in names
+
+    def test_skips_already_transcribed_md_format(self, tmp_path: Path):
+        (tmp_path / "rec.mp3").touch()
+        (tmp_path / "rec.md").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, output_format="md"))
+        assert [f.name for f in files] == []
+
+    def test_md_format_does_not_skip_txt_output(self, media_dir: Path):
+        # call.txt exists but format is md → call.mp4 should NOT be skipped
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="md"))
+        names = [f.name for f in files]
+        assert "call.mp4" in names

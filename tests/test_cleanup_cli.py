@@ -3,18 +3,19 @@ from pathlib import Path
 
 import pytest
 
-from whispercrawl.config import CleanupConfig, Config, ScheduleConfig, TranscriptionConfig, OllamaStepConfig, LoggingConfig
+from whispercrawl.config import CleanupConfig, Config, FormatterConfig, ScheduleConfig, TranscriptionConfig, OllamaStepConfig, LoggingConfig
 from whispercrawl.main import run_cleanup
 
 EXTENSIONS = [".mp3", ".ogg", ".wav"]
 
 
-def _config(watch_dir: Path, targets=None) -> Config:
+def _config(watch_dir: Path, targets=None, fmt: str = "txt") -> Config:
     if targets is None:
         targets = ["", "_fix", "_sum"]
     return Config(
         watch_dir=watch_dir,
         extensions=EXTENSIONS,
+        formatter=FormatterConfig(format=fmt),
         cleanup=CleanupConfig(targets=targets, on="success"),
         logging=LoggingConfig(),
     )
@@ -129,6 +130,42 @@ class TestRunCleanupErrFiles:
         run_cleanup(_config(tmp_path), dry_run=True)
 
         assert err.exists()
+
+
+class TestRunCleanupMdFormat:
+    def test_removes_md_output_files(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        md = _touch(tmp_path / "call.md")
+        fix = _touch(tmp_path / "call_fix.md")
+
+        run_cleanup(_config(tmp_path, fmt="md"))
+
+        assert not md.exists()
+        assert not fix.exists()
+
+    def test_md_cleanup_does_not_touch_txt_files(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        txt = _touch(tmp_path / "call.txt")
+
+        run_cleanup(_config(tmp_path, fmt="md"))
+
+        assert txt.exists()
+
+    def test_removes_md_dir_summary(self, tmp_path):
+        (tmp_path / "rec.ogg").touch()
+        dir_sum = _touch(tmp_path / (tmp_path.name + "_sum.md"))
+
+        run_cleanup(_config(tmp_path, fmt="md"))
+
+        assert not dir_sum.exists()
+
+    def test_md_err_files_still_removed(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        err = _touch(tmp_path / "call_err.txt")
+
+        run_cleanup(_config(tmp_path, fmt="md"))
+
+        assert not err.exists()
 
 
 class TestRunCleanupNoOutputs:
