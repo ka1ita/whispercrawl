@@ -163,6 +163,13 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-028: Skip Files Whose Output Exists in a Different Format
+
+- [x] `file_walker.py` — `iter_media_files`: replace single-extension skip check with a multi-extension check — when `rescan` is false, skip the file if an output file with the same stem exists in *any* supported extension (`.txt`, `.md`, `.html`)
+- [x] Tests: file processed as `txt`, config changed to `md` → skipped; file processed as `md`, config changed to `html` → skipped; file processed as `html`, config changed to `txt` → skipped; `rescan: true` with cross-format output → file re-queued; no output in any format → file queued
+
+---
+
 ## EPIC-026: Formatter Speaker Style for HTML and MD
 
 - [x] `config.py`: add `speaker_style: str = "bold"` and `text_placement: str = "same_line"` to `FormatterConfig`; validate both in `load_config` (raise `ValueError` on unknown values)

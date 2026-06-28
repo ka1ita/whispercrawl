@@ -45,15 +45,9 @@ class TestIterMediaFiles:
 
     def test_skips_already_transcribed_html_format(self, tmp_path: Path):
         (tmp_path / "rec.mp3").touch()
-        (tmp_path / "rec.html").touch()  # html transcript already exists
+        (tmp_path / "rec.html").touch()
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, output_format="html"))
         assert [f.name for f in files] == []
-
-    def test_html_format_does_not_skip_txt_output(self, media_dir: Path):
-        # call.txt exists but format is html → call.mp4 should NOT be skipped
-        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="html"))
-        names = [f.name for f in files]
-        assert "call.mp4" in names
 
     def test_skips_already_transcribed_md_format(self, tmp_path: Path):
         (tmp_path / "rec.mp3").touch()
@@ -61,8 +55,31 @@ class TestIterMediaFiles:
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, output_format="md"))
         assert [f.name for f in files] == []
 
-    def test_md_format_does_not_skip_txt_output(self, media_dir: Path):
-        # call.txt exists but format is md → call.mp4 should NOT be skipped
-        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=False, output_format="md"))
-        names = [f.name for f in files]
-        assert "call.mp4" in names
+    @pytest.mark.parametrize("existing_ext,current_format", [
+        (".txt", "md"),
+        (".txt", "html"),
+        (".md",  "txt"),
+        (".md",  "html"),
+        (".html", "txt"),
+        (".html", "md"),
+    ])
+    def test_skips_when_output_exists_in_different_format(
+        self, tmp_path: Path, existing_ext: str, current_format: str
+    ):
+        (tmp_path / "rec.mp3").touch()
+        (tmp_path / f"rec{existing_ext}").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, output_format=current_format))
+        assert [f.name for f in files] == []
+
+    @pytest.mark.parametrize("existing_ext,current_format", [
+        (".txt", "md"),
+        (".md",  "html"),
+        (".html", "txt"),
+    ])
+    def test_rescan_requeues_despite_cross_format_output(
+        self, tmp_path: Path, existing_ext: str, current_format: str
+    ):
+        (tmp_path / "rec.mp3").touch()
+        (tmp_path / f"rec{existing_ext}").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, output_format=current_format))
+        assert [f.name for f in files] == ["rec.mp3"]
