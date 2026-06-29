@@ -45,5 +45,8 @@ def start_scheduler(config: Config) -> None:
     signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
 
+    logger.info("Running pipeline immediately on startup")
+    run_pipeline(config)
+
     logger.info("Scheduler started")
     scheduler.start()

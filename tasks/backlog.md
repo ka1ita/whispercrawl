@@ -190,6 +190,13 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-032: Immediate First Run on Service Start
+
+- [x] `scheduler.py`: in `start_scheduler()`, call `run_pipeline(config)` once (with a log line) immediately after registering the job and before calling `scheduler.start()`
+- [x] Tests: verify `run_pipeline` is called before `scheduler.start()` for both cron and interval schedule types; verify the scheduler job is still registered for subsequent runs
+
+---
+
 ## EPIC-031: Skip Files Containing a Configurable Marker in Their Name
 
 - [x] `config.py`: add `skip_marker: str = "_skip"` field to `Config` dataclass
