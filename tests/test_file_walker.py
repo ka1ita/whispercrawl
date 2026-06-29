@@ -83,3 +83,30 @@ class TestIterMediaFiles:
         (tmp_path / f"rec{existing_ext}").touch()
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, output_format=current_format))
         assert [f.name for f in files] == ["rec.mp3"]
+
+    def test_skip_marker_excludes_file(self, tmp_path: Path):
+        (tmp_path / "meeting_skip.mp3").touch()
+        (tmp_path / "other.mp3").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip"))
+        assert [f.name for f in files] == ["other.mp3"]
+
+    def test_skip_marker_case_insensitive(self, tmp_path: Path):
+        (tmp_path / "meeting_SKIP.mp3").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip"))
+        assert files == []
+
+    def test_skip_marker_mid_stem(self, tmp_path: Path):
+        (tmp_path / "my_skip_recording.mp3").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip"))
+        assert files == []
+
+    def test_skip_marker_empty_disables_feature(self, tmp_path: Path):
+        (tmp_path / "meeting_skip.mp3").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker=""))
+        assert [f.name for f in files] == ["meeting_skip.mp3"]
+
+    def test_skip_marker_no_output_still_skipped(self, tmp_path: Path):
+        # marker check runs before output-existence check; no output file needed
+        (tmp_path / "rec_skip.mp3").touch()
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip"))
+        assert files == []

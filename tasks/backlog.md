@@ -190,6 +190,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-031: Skip Files Containing a Configurable Marker in Their Name
+
+- [x] `config.py`: add `skip_marker: str = "_skip"` field to `Config` dataclass
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `skip_marker: _skip` line near `rescan`
+- [x] `file_walker.py`: add `skip_marker: str = ""` parameter to `iter_media_files`; skip file (log DEBUG) when `skip_marker` is non-empty and found in `path.stem` (case-insensitive); check runs before rescan/output-existence logic
+- [x] `main.py`: pass `config.skip_marker` to `iter_media_files` in `run_pipeline()` and `run_dry_run()`
+- [x] Tests: marker present → skipped; upper-case marker → skipped; marker mid-stem → skipped; `skip_marker: ""` → file yielded; no marker → yielded; marker check runs even when no output exists
+
+---
+
 ## EPIC-030: Run Formatter After Directory Summarization
 
 - [x] `main.py`: remove `formatter.format_file()` calls from inside the per-file loop; accumulate all `files_to_format` paths only (no immediate conversion)

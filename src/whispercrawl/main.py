@@ -134,6 +134,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.transcription.output_suffix,
         config.rescan,
         config.formatter.format,
+        config.skip_marker,
     ))
 
     fmt = config.formatter.format

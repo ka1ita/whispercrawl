@@ -19,6 +19,9 @@ extensions:
 #   true  = reprocess all files regardless of existing output
 rescan: false
 
+# Files whose name contains this string are skipped entirely (case-insensitive); set to "" to disable
+# skip_marker: _skip
+
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
   format: txt               # txt | html | md (default: txt)

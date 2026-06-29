@@ -86,6 +86,7 @@ class Config:
     watch_dir: Path
     extensions: List[str]
     rescan: bool = False  # False = skip-processed, True = full rescan
+    skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
     formatter: FormatterConfig = field(default_factory=FormatterConfig)
 
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
@@ -120,6 +121,7 @@ def load_config(path: Path) -> Config:
         watch_dir=Path(raw["watch_dir"]),
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
+        skip_marker=raw.get("skip_marker", "_skip"),
         formatter=formatter_cfg,
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
