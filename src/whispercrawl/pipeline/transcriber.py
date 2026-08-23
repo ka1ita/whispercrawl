@@ -128,7 +128,16 @@ class Transcriber:
             if not text:
                 continue
             speaker = seg.get("speaker", "UNKNOWN")
-            lines.append(f"[{speaker}]: {text}")
+            if self.config.speaker_timestamps:
+                start = seg.get("start")
+                if isinstance(start, (int, float)):
+                    total = int(start)
+                    ts = f"{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}"
+                    lines.append(f"[{speaker} {ts}] {text}")
+                else:
+                    lines.append(f"[{speaker}] {text}")
+            else:
+                lines.append(f"[{speaker}]: {text}")
         return "\n".join(lines)
 
     def _save_diarize_json(self, file_path: Path, json_body: str) -> None:

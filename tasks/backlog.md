@@ -229,6 +229,15 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-035: Speaker Timestamps in Diarized Transcription Output
+
+- [x] `config.py`: add `speaker_timestamps: bool = False` to `TranscriptionConfig`
+- [x] `pipeline/transcriber.py`: in `_format_diarized()`, when `speaker_timestamps` is true, read `seg.get("start")`, format as `HH:MM:SS`, emit `[SPEAKER_XX HH:MM:SS] text`; fall back gracefully if `start` is absent
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `speaker_timestamps: false` under `transcription:`
+- [x] Tests: `speaker_timestamps: false` → format unchanged; `speaker_timestamps: true`, start present → timestamp included; `speaker_timestamps: true`, start missing → no exception, label without timestamp; `diarize: false` → setting ignored; timestamp wraps hours correctly
+
+---
+
 ## EPIC-030: Run Formatter After Directory Summarization
 
 - [x] `main.py`: remove `formatter.format_file()` calls from inside the per-file loop; accumulate all `files_to_format` paths only (no immediate conversion)

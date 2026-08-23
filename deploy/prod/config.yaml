@@ -37,6 +37,7 @@ transcription:
   output_suffix: ""                 # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
+  # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""                # Hint text passed to the model
   # vad_filter: false                 # Voice activity detection (faster_whisper only)
   # word_timestamps: false            # Return per-word timestamps

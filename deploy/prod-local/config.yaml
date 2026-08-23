@@ -33,6 +33,7 @@ transcription:
   output_suffix: ""
   error_suffix: _err
   timeout: 3600
+  # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:

@@ -27,6 +27,8 @@ class TranscriptionConfig:
     error_suffix: str = "_err"
     timeout: int = 300
 
+    speaker_timestamps: bool = False  # prefix each diarized segment with HH:MM:SS start time
+
     initial_prompt: Optional[str] = None
     vad_filter: Optional[bool] = None
     word_timestamps: Optional[bool] = None
