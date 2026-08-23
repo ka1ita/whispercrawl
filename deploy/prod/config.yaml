@@ -59,6 +59,8 @@ postprocessing:
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
   replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
+  # filename_timestamp_format: null  # strptime format for filename stem to offset speaker timestamps
+  #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:

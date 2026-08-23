@@ -4,6 +4,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-036: Absolute Speaker Timestamps from Filename
+
+- [x] `config.py`: add `filename_timestamp_format: str | None = None` to `PostprocessingConfig`
+- [x] `postprocessor.py`: add `_offset_timestamps(text, offset) -> str` — regex-find `[SPEAKER_\w+ HH:MM:SS]`, add timedelta, reformat; wrap at 24 h
+- [x] `postprocessor.py`: in the main postprocess method, after all existing passes, if `filename_timestamp_format` is set, parse `Path(source).stem` with `datetime.strptime`; on failure log WARNING and skip; call `_offset_timestamps` with the resulting timedelta
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `# filename_timestamp_format: null` under `postprocessing:`
+- [x] Tests: null format → no-op; valid format + matching stem → timestamps shifted; arithmetic wraps past midnight; format mismatch → WARNING + unchanged text; no speaker timestamps in text → no-op
+
+---
+
 ## EPIC-015: Fix Diarization — Speaker Labels in Transcript
 
 - [x] `transcriber.py`: when `diarize: true`, request `output=json`; parse segments; format as `[SPEAKER_XX]: text\n` per segment; warn (once per file) if no `speaker` field found

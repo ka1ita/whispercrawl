@@ -204,7 +204,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
 
             if postprocessor:
                 try:
-                    fixed_text = postprocessor.process(transcript)
+                    fixed_text = postprocessor.process(transcript, source_path=file_path)
                     fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
                     fix_path.write_text(fixed_text, encoding="utf-8")
                     dir_file_texts[file_path.parent][file_path.name][1] = fixed_text

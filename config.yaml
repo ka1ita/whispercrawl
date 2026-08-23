@@ -37,7 +37,7 @@ transcription:
   output_suffix: ""                 # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
-  # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
+  speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""                # Hint text passed to the model
   # vad_filter: false                 # Voice activity detection (faster_whisper only)
   # word_timestamps: false            # Return per-word timestamps
@@ -59,6 +59,8 @@ postprocessing:
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
   replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
+  # filename_timestamp_format: null  # strptime format for filename stem to offset speaker timestamps
+  #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
@@ -76,8 +78,8 @@ file_summarization:
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
   concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
-  underscore_prefix: false        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
-  concat_suffix: _concat          # suffix label for the combined transcriptions file
+  underscore_prefix: true        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
+  concat_suffix: _all          # suffix label for the combined transcriptions file
   llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
@@ -98,6 +100,7 @@ cleanup:
     - ""
     - _fix
     - _sum
+    - _all
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

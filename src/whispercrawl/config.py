@@ -49,6 +49,10 @@ class OllamaStepConfig:
     timeout: int = 300
     summarize_source: str = "postprocessed"  # "postprocessed" (_fix) | "original" (transcript)
 
+    # strptime format applied to filename stem to extract recording start time;
+    # when set, offsets [SPEAKER_XX HH:MM:SS] timestamps by that wall-clock start time.
+    filename_timestamp_format: Optional[str] = None
+
 
 @dataclass
 class ScheduleConfig:
