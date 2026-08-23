@@ -26,8 +26,8 @@ skip_marker: _skip
 formatter:
   format: html              # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
-  # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
-  # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
+  speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
+  text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
@@ -52,14 +52,14 @@ postprocessing:
   prompt: |
     Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
     ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
-    Верни только исправленный текст без пояснений. Не удаляй [SPEAKER_XX].
+    Верни только исправленный текст без пояснений. Не удаляй спикера и время ([SPEAKER_XX XX:XX:XX]).
   regex_patterns:
     - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
   output_suffix: _fix                # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
   replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
-  # filename_timestamp_format: null  # strptime format for filename stem to offset speaker timestamps
+  filename_timestamp_format: "%Y-%m-%d_%H_%M_%S"  # strptime format for filename stem to offset speaker timestamps
   #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
