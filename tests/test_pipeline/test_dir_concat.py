@@ -60,7 +60,7 @@ def _config(
 
 
 class TestConcatFileWritten:
-    def test_concat_file_written_as_plain_txt(self, tmp_path):
+    def test_concat_file_written_as_txt(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
@@ -68,7 +68,9 @@ class TestConcatFileWritten:
 
         concat = tmp_path / f"{tmp_path.name}_concat.txt"
         assert concat.exists()
-        assert concat.read_text(encoding="utf-8") == "hello"
+        content = concat.read_text(encoding="utf-8")
+        assert "rec.mp3" in content
+        assert "hello" in content
 
     def test_concat_file_contains_transcript_text(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
@@ -82,25 +84,23 @@ class TestConcatFileWritten:
         assert "text" in content
         assert "---" in content  # separator between files
 
-    def test_concat_always_txt_even_in_html_format(self, tmp_path):
+    def test_concat_converted_to_html_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="html"))
 
-        concat = tmp_path / f"{tmp_path.name}_concat.txt"
-        assert concat.exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.html").exists()
+        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
 
-    def test_concat_always_txt_even_in_md_format(self, tmp_path):
+    def test_concat_converted_to_md_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="md"))
 
-        concat = tmp_path / f"{tmp_path.name}_concat.txt"
-        assert concat.exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.md").exists()
+        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
 
     def test_custom_concat_suffix(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
@@ -242,8 +242,8 @@ class TestSummaryFormatterIntegration:
 
         assert (tmp_path / f"{tmp_path.name}_sum.md").exists()
         assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-        # concat file always .txt
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
 
     def test_summary_respects_formatter_format_html(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
@@ -256,4 +256,5 @@ class TestSummaryFormatterIntegration:
 
         assert (tmp_path / f"{tmp_path.name}_sum.html").exists()
         assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()

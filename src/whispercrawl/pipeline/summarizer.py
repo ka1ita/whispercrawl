@@ -66,8 +66,8 @@ class Summarizer:
         return self._call_ollama(text, file=file)
 
     def concat_transcriptions(self, texts_by_name: "dict[str, str]") -> str:
-        """Join pre-selected transcription texts in sorted filename order."""
+        """Join pre-selected transcription texts in sorted filename order with filename headers."""
         if not texts_by_name:
             raise SummarizationError("No transcription texts to concatenate")
-        parts = [texts_by_name[k] for k in sorted(texts_by_name)]
+        parts = [f"{k}\n\n{texts_by_name[k]}" for k in sorted(texts_by_name)]
         return "\n\n---\n\n".join(parts)

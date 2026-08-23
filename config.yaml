@@ -51,7 +51,7 @@ postprocessing:
   prompt: |
     Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
     ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
-    Верни только исправленный текст без пояснений. Не удаляй обозначения SPEAKER.
+    Верни только исправленный текст без пояснений. Не удаляй [SPEAKER_XX].
   regex_patterns:
     - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
   output_suffix: _fix                # Suffix label (extension comes from formatter.format)
@@ -61,7 +61,7 @@ postprocessing:
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
-  llm_enabled: true
+  llm_enabled: false
   summarize_source: postprocessed   # "postprocessed" (_fix) | "original" (transcript)
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
@@ -76,7 +76,7 @@ file_summarization:
 dir_summarization:
   concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
   underscore_prefix: false        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
-  # concat_suffix: _concat          # suffix label for the combined transcriptions file (always .txt)
+  concat_suffix: _concat          # suffix label for the combined transcriptions file
   llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b

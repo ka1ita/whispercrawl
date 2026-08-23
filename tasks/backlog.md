@@ -219,6 +219,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-034: Filename Headers in Concat and Formatter Pass for Concat File
+
+- [x] `pipeline/summarizer.py`: in `concat_transcriptions()`, prefix each block with the sorted filename key on its own line; keep `\n\n---\n\n` separator between blocks; no trailing separator
+- [x] `main.py`: add `concat_path` to `all_outputs_to_format` after writing it
+- [x] `main.py` `run_cleanup()`: replace the hardcoded-`.txt` concat path with `output_path(dir_base, concat_suffix, fmt)`; remove the "always plain .txt" special-case branch
+- [x] Tests: `concat_transcriptions` two files → filename headers present in sorted order; separator only between blocks; existing empty-dict → `SummarizationError` unchanged
+- [x] Tests: `format: md` → concat file written as `.md`; `format: html` → `.html`; `format: txt` → `.txt`; `run_cleanup` removes correct extension for each format
+
+---
+
 ## EPIC-030: Run Formatter After Directory Summarization
 
 - [x] `main.py`: remove `formatter.format_file()` calls from inside the per-file loop; accumulate all `files_to_format` paths only (no immediate conversion)

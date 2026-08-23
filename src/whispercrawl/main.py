@@ -90,8 +90,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
             if suffix.endswith(".json"):
                 dir_sum = dir_path / (dir_path.name + suffix)
             elif suffix == concat_suffix:
-                # concat file is always plain .txt regardless of formatter format
-                dir_sum = dir_path / (dir_prefix + dir_path.name + suffix + ".txt")
+                dir_sum = output_path(dir_base, suffix, fmt)
             else:
                 dir_sum = output_path(dir_base, suffix, fmt)
             if dir_sum.exists():
@@ -267,6 +266,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 concat_path = dir_path / (prefix + dir_path.name + config.dir_summarization.concat_suffix + ".txt")
                 concat_path.write_text(combined, encoding="utf-8")
                 logger.info("Concatenated transcriptions written: %s", concat_path)
+                all_outputs_to_format.append(concat_path)
 
                 if config.dir_summarization.llm_enabled:
                     dir_summary = dir_summarizer.summarize_file(combined, file=str(dir_path.name))

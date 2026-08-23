@@ -97,7 +97,9 @@ class TestConcatTranscriptions:
     def test_single_file_no_separator(self):
         cfg = _cfg()
         result = Summarizer(cfg).concat_transcriptions({"only.mp3": "Solo text"})
-        assert result == "Solo text"
+        assert "only.mp3" in result
+        assert "Solo text" in result
+        assert "---" not in result
 
     def test_empty_dict_raises_error(self):
         cfg = _cfg()
