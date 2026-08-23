@@ -44,14 +44,14 @@ transcription:
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
-  llm_enabled: true    # LLM correction via ollama (default: true)
+  llm_enabled: false    # LLM correction via ollama (default: true)
   regex_enabled: true  # Regex cleanup pass (default: true)
   url: ${OLLAMA_URL:http://localhost:11434}       # ollama base URL
   model: gemma3:1b
   prompt: |
     Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
     ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
-    Верни только исправленный текст без пояснений.
+    Верни только исправленный текст без пояснений. Не удаляй обозначения SPEAKER.
   regex_patterns:
     - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
   output_suffix: _fix                # Suffix label (extension comes from formatter.format)
@@ -74,11 +74,14 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
+  concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
+  underscore_prefix: false        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
+  # concat_suffix: _concat          # suffix label for the combined transcriptions file (always .txt)
   llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
   prompt: |
-    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
   output_suffix: _sum               # Suffix label (extension comes from formatter.format)

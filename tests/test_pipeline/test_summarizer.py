@@ -81,40 +81,31 @@ class TestSummarizeFile:
         assert mock_post.call_args.kwargs["json"]["stream"] is False
 
 
-class TestSummarizeDirectory:
-    def test_combines_summary_files_and_calls_ollama(self, tmp_path):
-        (tmp_path / "a_sum.txt").write_text("Summary A", encoding="utf-8")
-        (tmp_path / "b_sum.txt").write_text("Summary B", encoding="utf-8")
-
+class TestConcatTranscriptions:
+    def test_joins_texts_with_separator(self):
         cfg = _cfg()
-        with patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_response("Combined")) as mock_post:
-            result = Summarizer(cfg).summarize_directory(tmp_path, "_sum")
+        result = Summarizer(cfg).concat_transcriptions({"a.mp3": "Text A", "b.mp3": "Text B"})
+        assert "Text A" in result
+        assert "Text B" in result
+        assert "---" in result
 
-        assert result == "Combined"
-        user_content = mock_post.call_args.kwargs["json"]["messages"][1]["content"]
-        assert "Summary A" in user_content
-        assert "Summary B" in user_content
-        assert "---" in user_content
-
-    def test_summaries_joined_in_sorted_order(self, tmp_path):
-        (tmp_path / "z_sum.txt").write_text("Z", encoding="utf-8")
-        (tmp_path / "a_sum.txt").write_text("A", encoding="utf-8")
-
+    def test_sorted_by_filename(self):
         cfg = _cfg()
-        with patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_response()) as mock_post:
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum")
+        result = Summarizer(cfg).concat_transcriptions({"z.mp3": "Z", "a.mp3": "A"})
+        assert result.index("A") < result.index("Z")
 
-        content = mock_post.call_args.kwargs["json"]["messages"][1]["content"]
-        assert content.index("A") < content.index("Z")
-
-    def test_no_summary_files_raises_error(self, tmp_path):
+    def test_single_file_no_separator(self):
         cfg = _cfg()
-        with pytest.raises(SummarizationError, match="No summary files found"):
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum")
+        result = Summarizer(cfg).concat_transcriptions({"only.mp3": "Solo text"})
+        assert result == "Solo text"
 
-    def test_ignores_files_with_wrong_suffix(self, tmp_path):
-        (tmp_path / "a.txt").write_text("raw transcript", encoding="utf-8")
-
+    def test_empty_dict_raises_error(self):
         cfg = _cfg()
-        with pytest.raises(SummarizationError, match="No summary files found"):
-            Summarizer(cfg).summarize_directory(tmp_path, "_sum")
+        with pytest.raises(SummarizationError, match="No transcription texts"):
+            Summarizer(cfg).concat_transcriptions({})
+
+    def test_does_not_call_ollama(self):
+        cfg = _cfg()
+        with patch("whispercrawl.pipeline.summarizer.httpx.post") as mock_post:
+            Summarizer(cfg).concat_transcriptions({"a.mp3": "Text"})
+        mock_post.assert_not_called()

@@ -82,14 +82,18 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         for p in config.watch_dir.rglob("*")
         if p.is_file() and p.suffix.lower() in config.extensions
     }
+    dir_prefix = "_" if config.dir_summarization.underscore_prefix else ""
+    concat_suffix = config.dir_summarization.concat_suffix
     for dir_path in sorted(dirs_seen):
         for suffix in targets:
-            dir_base = dir_path / dir_path.name
-            dir_sum = (
-                dir_path / (dir_path.name + suffix)
-                if suffix.endswith(".json")
-                else output_path(dir_base, suffix, fmt)
-            )
+            dir_base = dir_path / (dir_prefix + dir_path.name)
+            if suffix.endswith(".json"):
+                dir_sum = dir_path / (dir_path.name + suffix)
+            elif suffix == concat_suffix:
+                # concat file is always plain .txt regardless of formatter format
+                dir_sum = dir_path / (dir_prefix + dir_path.name + suffix + ".txt")
+            else:
+                dir_sum = output_path(dir_base, suffix, fmt)
             if dir_sum.exists():
                 if dry_run:
                     logger.info("Would clean: %s", dir_sum)
@@ -166,12 +170,10 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             Summarizer(config.file_summarization, svc_log)
             if config.file_summarization.llm_enabled else None
         )
-        dir_summarizer = (
-            Summarizer(config.dir_summarization, svc_log)
-            if config.dir_summarization.llm_enabled else None
-        )
+        dir_summarizer = Summarizer(config.dir_summarization, svc_log)
 
-        dirs_with_files: set[Path] = set()
+        # dir_path → {filename: [transcript, fixed_text_or_None]}
+        dir_file_texts: dict[Path, dict[str, list]] = {}
         all_outputs_to_format: list[Path] = []
 
         for file_path in files:
@@ -193,7 +195,9 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             txt_path = output_path(file_path, config.transcription.output_suffix, "txt")
             txt_path.write_text(transcript, encoding="utf-8")
             logger.info("Transcript written: %s", txt_path)
-            dirs_with_files.add(file_path.parent)
+
+            # Track per-dir texts for concatenation step; entry is [transcript, fixed_text]
+            dir_file_texts.setdefault(file_path.parent, {})[file_path.name] = [transcript, None]
 
             # Track output files written for this media file; Formatter converts them at end
             files_to_format = [txt_path]
@@ -204,6 +208,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                     fixed_text = postprocessor.process(transcript)
                     fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
                     fix_path.write_text(fixed_text, encoding="utf-8")
+                    dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
                     if config.postprocessing.replace_transcription:
                         fix_path.replace(txt_path)
                         logger.info("Replaced transcript with post-processed: %s", txt_path)
@@ -244,24 +249,38 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                     err_path.unlink()
                     logger.debug("Removed stale error file: %s", err_path)
 
-        if dir_summarizer:
-            for dir_path in sorted(dirs_with_files):
-                dir_base = dir_path / dir_path.name
-                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
-                try:
-                    dir_summary = dir_summarizer.summarize_directory(
-                        dir_path, config.file_summarization.output_suffix
+        prefix = "_" if config.dir_summarization.underscore_prefix else ""
+        for dir_path in sorted(dir_file_texts):
+            dir_base = dir_path / (prefix + dir_path.name)
+            dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
+            try:
+                selected = {
+                    name: _pick_summary_input(
+                        config.dir_summarization.concat_source,
+                        entry[0],
+                        entry[1],
+                        name,
                     )
+                    for name, entry in dir_file_texts[dir_path].items()
+                }
+                combined = dir_summarizer.concat_transcriptions(selected)
+                concat_path = dir_path / (prefix + dir_path.name + config.dir_summarization.concat_suffix + ".txt")
+                concat_path.write_text(combined, encoding="utf-8")
+                logger.info("Concatenated transcriptions written: %s", concat_path)
+
+                if config.dir_summarization.llm_enabled:
+                    dir_summary = dir_summarizer.summarize_file(combined, file=str(dir_path.name))
                     dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, "txt")
                     dir_sum_path.write_text(dir_summary, encoding="utf-8")
                     all_outputs_to_format.append(dir_sum_path)
                     logger.info("Directory summary written: %s", dir_sum_path)
-                    if dir_err_path.exists():
-                        dir_err_path.unlink()
-                        logger.debug("Removed stale error file: %s", dir_err_path)
-                except SummarizationError as e:
-                    logger.error("Directory summarization failed for %s: %s", dir_path, e)
-                    dir_err_path.write_text(str(e), encoding="utf-8")
+
+                if dir_err_path.exists():
+                    dir_err_path.unlink()
+                    logger.debug("Removed stale error file: %s", dir_err_path)
+            except SummarizationError as e:
+                logger.error("Directory summarization failed for %s: %s", dir_path, e)
+                dir_err_path.write_text(str(e), encoding="utf-8")
 
         for path in all_outputs_to_format:
             if path.exists():

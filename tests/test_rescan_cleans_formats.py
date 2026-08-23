@@ -9,6 +9,7 @@ import pytest
 from whispercrawl.config import (
     CleanupConfig,
     Config,
+    DirSummarizationConfig,
     FormatterConfig,
     LoggingConfig,
     OllamaStepConfig,
@@ -28,7 +29,7 @@ def _config(tmp_path: Path, fmt: str, rescan: bool = True) -> Config:
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=["", "_fix", "_sum"]),
         logging=LoggingConfig(),

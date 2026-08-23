@@ -61,6 +61,13 @@ class CleanupConfig:
 
 
 @dataclass
+class DirSummarizationConfig(OllamaStepConfig):
+    concat_source: str = "postprocessed"  # "postprocessed" | "original"
+    underscore_prefix: bool = False        # true → output files named _<dirname>_...
+    concat_suffix: str = "_concat"         # suffix label for the combined transcriptions file
+
+
+@dataclass
 class FormatterConfig:
     format: str = "txt"              # "txt" | "html" | "md"
     enabled: bool = True             # false = skip conversion; files stay as .txt
@@ -92,7 +99,7 @@ class Config:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix"))
     file_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
-    dir_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
+    dir_summarization: DirSummarizationConfig = field(default_factory=lambda: DirSummarizationConfig(output_suffix="_sum"))
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -116,6 +123,14 @@ def load_config(path: Path) -> Config:
     if formatter_cfg.text_placement not in ("same_line", "new_line"):
         raise ValueError(f"formatter.text_placement must be 'same_line' or 'new_line', got {formatter_cfg.text_placement!r}")
 
+    dir_sum_raw = raw.get("dir_summarization", {})
+    dir_sum_cfg = _build(DirSummarizationConfig, dir_sum_raw)
+    if dir_sum_cfg.concat_source not in ("postprocessed", "original"):
+        raise ValueError(
+            f"dir_summarization.concat_source must be 'postprocessed' or 'original',"
+            f" got {dir_sum_cfg.concat_source!r}"
+        )
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=Path(raw["watch_dir"]),
@@ -126,7 +141,7 @@ def load_config(path: Path) -> Config:
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),
-        dir_summarization=_build(OllamaStepConfig, raw.get("dir_summarization", {})),
+        dir_summarization=dir_sum_cfg,
         schedule=_build(ScheduleConfig, sched_raw),
         cleanup=_build(CleanupConfig, raw.get("cleanup", {})),
         logging=_build(LoggingConfig, raw.get("logging", {})),

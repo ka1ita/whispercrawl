@@ -207,6 +207,18 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-033: Per-Directory Concatenation of Transcriptions
+
+- [x] `config.py`: add `concat_source: str = "postprocessed"`, `underscore_prefix: bool = False`, `concat_suffix: str = "_concat"` to `DirSummarizationConfig`; validate `concat_source` in `load_config`
+- [x] `pipeline/summarizer.py`: replace `summarize_directory()` with `concat_transcriptions(texts_by_name, concat_source)` (joins in-memory texts with `\n\n---\n\n`; raises `SummarizationError` if dict is empty) and `summarize_text(text, label)` (thin `_call_ollama` wrapper); keep `summarize_file` as alias or remove if unused
+- [x] `main.py`: collect per-file transcription texts in a `dir_texts` dict during the file loop; after the loop, for each dir compute `dir_base` with optional `_` prefix; write concat file as plain `.txt`; if `llm_enabled`, call `summarize_text` and write summary via `output_path`; add summary to `all_outputs_to_format`
+- [x] `main.py` cleanup: update `run_cleanup` dir-base derivation to apply the same `underscore_prefix` logic
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `concat_source: postprocessed`; add commented `underscore_prefix: false` and `concat_suffix: _concat`; update `dir_summarization` prompt to reflect full-transcription input
+- [x] Tests: `concat_transcriptions` — two texts joined with separator; empty dict → `SummarizationError`; `concat_source: postprocessed` falls back to original when fix text absent
+- [x] Tests: `underscore_prefix: false` → `<dirname>_sum.<ext>`; `underscore_prefix: true` → `_<dirname>_sum.<ext>` and `_<dirname>_concat.txt`; concat file always `.txt`; Formatter applied to summary only; `run_cleanup` removes both files when suffixes in targets
+
+---
+
 ## EPIC-030: Run Formatter After Directory Summarization
 
 - [x] `main.py`: remove `formatter.format_file()` calls from inside the per-file loop; accumulate all `files_to_format` paths only (no immediate conversion)

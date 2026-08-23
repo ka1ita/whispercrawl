@@ -9,6 +9,7 @@ import pytest
 from whispercrawl.config import (
     CleanupConfig,
     Config,
+    DirSummarizationConfig,
     FormatterConfig,
     LoggingConfig,
     OllamaStepConfig,
@@ -136,7 +137,7 @@ def _html_config(tmp_path: Path) -> Config:
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
@@ -197,7 +198,7 @@ class TestFormatterDisabled:
             transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
             postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
             file_summarization=OllamaStepConfig(llm_enabled=False),
-            dir_summarization=OllamaStepConfig(llm_enabled=False),
+            dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
             cleanup=CleanupConfig(targets=[]),
             logging=LoggingConfig(),
@@ -265,7 +266,7 @@ def _txt_config(tmp_path: Path) -> Config:
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
@@ -297,42 +298,33 @@ class TestTxtPipelineOutput:
         assert (tmp_path / "rec.txt").read_text(encoding="utf-8") == "transcript text"
 
 
-# ── Dir summarizer reads plain .txt ──────────────────────────────────────────
+# ── Dir concat uses in-memory texts, not files on disk ────────────────────────
 
-class TestDirSummarizerReadsPlainText:
-    def test_summarize_directory_reads_txt_in_html_mode(self, tmp_path):
-        """Dir summarizer globs .txt regardless of formatter.format."""
-        from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
-        from unittest.mock import MagicMock
-
-        (tmp_path / "rec_sum.txt").write_text("plain summary", encoding="utf-8")
-
-        summarizer = Summarizer(
-            OllamaStepConfig(llm_enabled=True, output_suffix="_sum"),
-        )
-        captured = []
-
-        def fake_call(text, file=""):
-            captured.append(text)
-            return "combined"
-
-        summarizer._call_ollama = fake_call
-        result = summarizer.summarize_directory(tmp_path, "_sum")
-
-        assert result == "combined"
-        assert captured[0] == "plain summary"
-
-    def test_summarize_directory_ignores_html_files(self, tmp_path):
-        """Even if .html files are present, dir summarizer only reads .txt."""
+class TestDirConcatUsesMemoryTexts:
+    def test_concat_receives_in_memory_text_not_files(self, tmp_path):
+        """concat_transcriptions works from passed dict and does not call ollama."""
         from whispercrawl.pipeline.summarizer import Summarizer
 
-        (tmp_path / "rec_sum.html").write_text("<html>html summary</html>", encoding="utf-8")
+        summarizer = Summarizer(DirSummarizationConfig(llm_enabled=True, output_suffix="_sum"))
+        ollama_called = []
+        summarizer._call_ollama = lambda text, file="": ollama_called.append(text) or ""
 
-        summarizer = Summarizer(OllamaStepConfig(llm_enabled=True, output_suffix="_sum"))
+        result = summarizer.concat_transcriptions({"rec.mp3": "plain transcript"})
 
-        from whispercrawl.pipeline.summarizer import SummarizationError
-        with pytest.raises(SummarizationError, match="No summary files"):
-            summarizer.summarize_directory(tmp_path, "_sum")
+        assert result == "plain transcript"
+        assert ollama_called == []  # concat_transcriptions must not call ollama
+
+    def test_concat_ignores_files_on_disk(self, tmp_path):
+        """Files on disk are irrelevant; only passed texts are concatenated."""
+        from whispercrawl.pipeline.summarizer import Summarizer
+
+        (tmp_path / "rec_sum.txt").write_text("on disk text", encoding="utf-8")
+
+        summarizer = Summarizer(DirSummarizationConfig(llm_enabled=True, output_suffix="_sum"))
+        result = summarizer.concat_transcriptions({"rec.mp3": "in-memory text"})
+
+        assert result == "in-memory text"
+        assert "on disk text" not in result
 
 
 # ── Dir summarization runs before formatter (EPIC-030) ────────────────────────
@@ -353,7 +345,7 @@ class TestDirSumAfterFormatter:
                 output_suffix="_sum",
                 error_suffix="_err",
             ),
-            dir_summarization=OllamaStepConfig(
+            dir_summarization=DirSummarizationConfig(
                 llm_enabled=True,
                 output_suffix="_sum",
                 error_suffix="_err",

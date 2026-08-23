@@ -74,11 +74,14 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
+  concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
+  underscore_prefix: false        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
+  # concat_suffix: _concat          # suffix label for the combined transcriptions file (always .txt)
   llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
   prompt: |
-    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
   output_suffix: _sum               # Suffix label (extension comes from formatter.format)

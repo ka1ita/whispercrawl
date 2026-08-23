@@ -66,11 +66,14 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
+  concat_source: postprocessed      # "postprocessed" | "original"
+  underscore_prefix: false
+  # concat_suffix: _concat
   llm_enabled: true
   url: ${OLLAMA_URL:http://ollama:11434}
   model: gemma3:1b
   prompt: |
-    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
   output_suffix: _sum
