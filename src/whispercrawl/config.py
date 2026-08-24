@@ -5,7 +5,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import yaml
 
@@ -49,9 +49,10 @@ class OllamaStepConfig:
     timeout: int = 300
     summarize_source: str = "postprocessed"  # "postprocessed" (_fix) | "original" (transcript)
 
-    # strptime format applied to filename stem to extract recording start time;
+    # strptime format(s) applied to filename stem to extract recording start time;
     # when set, offsets [SPEAKER_XX HH:MM:SS] timestamps by that wall-clock start time.
-    filename_timestamp_format: Optional[str] = None
+    # Accepts a single format string or a list of formats tried in order.
+    filename_timestamp_format: Optional[Union[str, List[str]]] = None
 
 
 @dataclass

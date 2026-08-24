@@ -95,13 +95,24 @@ class PostProcessor:
             text = self._call_ollama(text)
         if self.config.filename_timestamp_format and source_path is not None:
             stem = source_path.stem
-            try:
-                dt = datetime.strptime(stem, self.config.filename_timestamp_format)
+            formats = self.config.filename_timestamp_format
+            if isinstance(formats, str):
+                formats = [formats]
+
+            dt = None
+            for fmt in formats:
+                try:
+                    dt = datetime.strptime(stem, fmt)
+                    break
+                except ValueError:
+                    continue
+
+            if dt is not None:
                 offset = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second)
                 text = self._offset_timestamps(text, offset)
-            except ValueError:
+            else:
                 logger.warning(
-                    "Cannot parse timestamp from filename %r using format %r; skipping offset",
-                    stem, self.config.filename_timestamp_format,
+                    "Cannot parse timestamp from filename %r using any of formats %r; skipping offset",
+                    stem, formats,
                 )
         return text

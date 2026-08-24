@@ -4,6 +4,15 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-037: Multiple filename_timestamp_format Values
+
+- [x] `config.py`: widen `filename_timestamp_format` type to `Optional[Union[str, List[str]]]`
+- [x] `postprocessor.py`: in `process()`, normalize a bare string into a one-item list; try each format in order with `datetime.strptime`, stopping at the first successful parse; single WARNING listing all formats tried if none match
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: document the list form in the `filename_timestamp_format` comment
+- [x] Tests: list of formats, filename matches second format → shifted; filename matches first format → first one used; filename matches none → WARNING + unchanged text; existing single-string behavior unchanged (regression)
+
+---
+
 ## EPIC-036: Absolute Speaker Timestamps from Filename
 
 - [x] `config.py`: add `filename_timestamp_format: str | None = None` to `PostprocessingConfig`

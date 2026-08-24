@@ -11,7 +11,7 @@ from whispercrawl.config import OllamaStepConfig
 from whispercrawl.pipeline.postprocessor import PostProcessor
 
 
-def _pp(fmt: str | None = None) -> PostProcessor:
+def _pp(fmt: "str | list[str] | None" = None) -> PostProcessor:
     cfg = OllamaStepConfig(
         llm_enabled=False,
         regex_enabled=False,
@@ -89,6 +89,27 @@ class TestOffsetTimestamps:
         pp = _pp(fmt="%Y-%m-%d_%H_%M_%S")
         result = pp.process(text, source_path=Path("2026-08-21_09_04_40.ogg"))
         assert "[09:05:32]" in result
+
+    def test_list_of_formats_first_match_used(self):
+        # start = 09:04:40, filename uses dash-separated format (second in list)
+        pp = _pp(fmt=["%Y-%m-%d_%H_%M_%S", "%Y-%m-%d-%H-%M-%S"])
+        result = pp.process(TEXT, source_path=Path("2026-08-21-09-04-40.ogg"))
+        assert "[SPEAKER_04 09:05:32]" in result
+        assert "[SPEAKER_05 09:06:33]" in result
+
+    def test_list_of_formats_matches_first_listed_format_first(self):
+        # filename would parse under either format if both matched digit-for-digit;
+        # here only the first format in the list actually matches the underscore filename.
+        pp = _pp(fmt=["%Y-%m-%d_%H_%M_%S", "%Y-%m-%d-%H-%M-%S"])
+        result = pp.process(TEXT, source_path=Path("2026-08-21_09_04_40.ogg"))
+        assert "[SPEAKER_04 09:05:32]" in result
+
+    def test_list_of_formats_none_match_logs_warning_and_returns_unchanged(self, caplog):
+        pp = _pp(fmt=["%Y-%m-%d_%H_%M_%S", "%Y-%m-%d-%H-%M-%S"])
+        with caplog.at_level(logging.WARNING):
+            result = pp.process(TEXT, source_path=Path("unexpected_name.ogg"))
+        assert result == TEXT
+        assert "Cannot parse timestamp" in caplog.text
 
     def test_offset_applied_after_regex_and_llm(self):
         """Offset runs last — after regex cleanup removes noise lines."""
