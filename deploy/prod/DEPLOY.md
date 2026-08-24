@@ -74,10 +74,10 @@ bash service-down.sh
 Remove all pipeline output files (`.txt`, `_fix.txt`, `_sum.txt`) without touching source audio:
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm whispercrawl --once --cleanup
+bash service-cleanup.sh
 
 # Dry run — shows what would be deleted
-docker compose -f docker-compose.prod.yml run --rm whispercrawl --once --cleanup --dry-run
+bash service-cleanup.sh --dry-run
 ```
 
 ---
@@ -129,5 +129,6 @@ deploy/prod/
   setup.sh            ← first-run setup (create dirs, load image)
   service-start.sh    ← docker compose up -d
   service-down.sh     ← docker compose down
+  service-cleanup.sh  ← docker compose run --rm whispercrawl --once --cleanup
   DEPLOY.md           ← this file
 ```
