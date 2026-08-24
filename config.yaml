@@ -24,7 +24,7 @@ skip_marker: _skip
 
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
-  format: html              # txt | html | md (default: txt)
+  format: txt              # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
   # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
   # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
@@ -53,7 +53,35 @@ postprocessing:
     ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
     Верни только исправленный текст без пояснений.
   regex_patterns:
-    - '.*ТРЕВОЖНАЯ МУЗЫКА.*\n?'
+#    - '.*Субтитры сделал DimaTorzok.*\n?' - в середине строки
+#    - '.*Субтитры сделал DimaTorzok\n' - конец строки
+    - '.*Субтитры создавал\n'
+    - '.*Редактор субтитров\n'
+    - '.*Продолжение следует\n'
+    - '.*Thank you for watching\n'
+    - '.*Текст читал\n'
+    - '.*Подпишись на канал\n'
+    - '.*Интригующая музыка\n'
+    - '.*Тревожная музыка\n'
+    - '.*watching\n'
+    - '.*UNKNOWN: Субтитры сделал DimaTorzok\n'
+    - '.*Субтитры сделал DimaTorzok\n'
+    - '.*Продолжаем.\n'
+    - '.*До новых встреч!\n'
+    - '.*Субтитры делал DimaTorzok\n'
+    - '.*ЗВОНОК В ДВЕРЬ\n'
+    - '.*Субтитры подогнал «Симон»\n'
+    - '.*Спасибо за просмотр\n'
+    - '.*ДИНАМИЧНАЯ МУЗЫКА\n'
+    - '.*В.ПУТИН\n'
+    - '.*СМЕХ СМЕХ\n'
+    - '.*ЗВОНОК ТЕЛЕФОНА\n'
+    - '.*Спасибо за внимание.\n'
+    - '.*Субтитры подогнали Симон.\n'
+    - '.*СПОКОЙНАЯ МУЗЫКА\n'
+    - '.*Аминь.\n'
+    - '.*Аллилуйя.\n'
+    - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
   output_suffix: _fix                # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
@@ -115,4 +143,4 @@ logging:
 # Use either cron or interval, not both. Comment out both to require --once flag.
 schedule:
   # cron: "0 * * * *"      # every hour at :00
-  interval: 30s             # every 30 minutes (supports: 30s, 15m, 2h)
+  interval: 10m             # every 30 minutes (supports: 30s, 15m, 2h)
