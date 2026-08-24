@@ -1,13 +1,20 @@
 ﻿"""Post-processing: regex cleanup + LLM correction via ollama."""
 from __future__ import annotations
 
+import logging
 import re
 import time
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional
 
 import httpx
 
 from whispercrawl.config import OllamaStepConfig
+
+logger = logging.getLogger(__name__)
+
+_SPEAKER_TS_RE = re.compile(r'(\[SPEAKER_\w+ )(\d{2}:\d{2}:\d{2})(\])')
 
 
 class PostProcessingError(Exception):
@@ -68,9 +75,33 @@ class PostProcessor:
             )
         return response.json()["message"]["content"]
 
-    def process(self, text: str) -> str:
+    @staticmethod
+    def _offset_timestamps(text: str, offset: timedelta) -> str:
+        offset_secs = int(offset.total_seconds())
+
+        def _shift(m: re.Match) -> str:
+            h, mi, s = map(int, m.group(2).split(':'))
+            total = (h * 3600 + mi * 60 + s + offset_secs) % 86400
+            nh, rem = divmod(total, 3600)
+            nm, ns = divmod(rem, 60)
+            return f"{m.group(1)}{nh:02d}:{nm:02d}:{ns:02d}{m.group(3)}"
+
+        return _SPEAKER_TS_RE.sub(_shift, text)
+
+    def process(self, text: str, source_path: Path | None = None) -> str:
         if self.config.regex_enabled:
             text = self._apply_regex(text)
         if self.config.llm_enabled:
             text = self._call_ollama(text)
+        if self.config.filename_timestamp_format and source_path is not None:
+            stem = source_path.stem
+            try:
+                dt = datetime.strptime(stem, self.config.filename_timestamp_format)
+                offset = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second)
+                text = self._offset_timestamps(text, offset)
+            except ValueError:
+                logger.warning(
+                    "Cannot parse timestamp from filename %r using format %r; skipping offset",
+                    stem, self.config.filename_timestamp_format,
+                )
         return text

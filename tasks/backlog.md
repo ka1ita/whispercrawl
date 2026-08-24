@@ -4,6 +4,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-036: Absolute Speaker Timestamps from Filename
+
+- [x] `config.py`: add `filename_timestamp_format: str | None = None` to `PostprocessingConfig`
+- [x] `postprocessor.py`: add `_offset_timestamps(text, offset) -> str` — regex-find `[SPEAKER_\w+ HH:MM:SS]`, add timedelta, reformat; wrap at 24 h
+- [x] `postprocessor.py`: in the main postprocess method, after all existing passes, if `filename_timestamp_format` is set, parse `Path(source).stem` with `datetime.strptime`; on failure log WARNING and skip; call `_offset_timestamps` with the resulting timedelta
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `# filename_timestamp_format: null` under `postprocessing:`
+- [x] Tests: null format → no-op; valid format + matching stem → timestamps shifted; arithmetic wraps past midnight; format mismatch → WARNING + unchanged text; no speaker timestamps in text → no-op
+
+---
+
 ## EPIC-015: Fix Diarization — Speaker Labels in Transcript
 
 - [x] `transcriber.py`: when `diarize: true`, request `output=json`; parse segments; format as `[SPEAKER_XX]: text\n` per segment; warn (once per file) if no `speaker` field found
@@ -204,6 +214,37 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 - [x] `file_walker.py`: add `skip_marker: str = ""` parameter to `iter_media_files`; skip file (log DEBUG) when `skip_marker` is non-empty and found in `path.stem` (case-insensitive); check runs before rescan/output-existence logic
 - [x] `main.py`: pass `config.skip_marker` to `iter_media_files` in `run_pipeline()` and `run_dry_run()`
 - [x] Tests: marker present → skipped; upper-case marker → skipped; marker mid-stem → skipped; `skip_marker: ""` → file yielded; no marker → yielded; marker check runs even when no output exists
+
+---
+
+## EPIC-033: Per-Directory Concatenation of Transcriptions
+
+- [x] `config.py`: add `concat_source: str = "postprocessed"`, `underscore_prefix: bool = False`, `concat_suffix: str = "_concat"` to `DirSummarizationConfig`; validate `concat_source` in `load_config`
+- [x] `pipeline/summarizer.py`: replace `summarize_directory()` with `concat_transcriptions(texts_by_name, concat_source)` (joins in-memory texts with `\n\n---\n\n`; raises `SummarizationError` if dict is empty) and `summarize_text(text, label)` (thin `_call_ollama` wrapper); keep `summarize_file` as alias or remove if unused
+- [x] `main.py`: collect per-file transcription texts in a `dir_texts` dict during the file loop; after the loop, for each dir compute `dir_base` with optional `_` prefix; write concat file as plain `.txt`; if `llm_enabled`, call `summarize_text` and write summary via `output_path`; add summary to `all_outputs_to_format`
+- [x] `main.py` cleanup: update `run_cleanup` dir-base derivation to apply the same `underscore_prefix` logic
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `concat_source: postprocessed`; add commented `underscore_prefix: false` and `concat_suffix: _concat`; update `dir_summarization` prompt to reflect full-transcription input
+- [x] Tests: `concat_transcriptions` — two texts joined with separator; empty dict → `SummarizationError`; `concat_source: postprocessed` falls back to original when fix text absent
+- [x] Tests: `underscore_prefix: false` → `<dirname>_sum.<ext>`; `underscore_prefix: true` → `_<dirname>_sum.<ext>` and `_<dirname>_concat.txt`; concat file always `.txt`; Formatter applied to summary only; `run_cleanup` removes both files when suffixes in targets
+
+---
+
+## EPIC-034: Filename Headers in Concat and Formatter Pass for Concat File
+
+- [x] `pipeline/summarizer.py`: in `concat_transcriptions()`, prefix each block with the sorted filename key on its own line; keep `\n\n---\n\n` separator between blocks; no trailing separator
+- [x] `main.py`: add `concat_path` to `all_outputs_to_format` after writing it
+- [x] `main.py` `run_cleanup()`: replace the hardcoded-`.txt` concat path with `output_path(dir_base, concat_suffix, fmt)`; remove the "always plain .txt" special-case branch
+- [x] Tests: `concat_transcriptions` two files → filename headers present in sorted order; separator only between blocks; existing empty-dict → `SummarizationError` unchanged
+- [x] Tests: `format: md` → concat file written as `.md`; `format: html` → `.html`; `format: txt` → `.txt`; `run_cleanup` removes correct extension for each format
+
+---
+
+## EPIC-035: Speaker Timestamps in Diarized Transcription Output
+
+- [x] `config.py`: add `speaker_timestamps: bool = False` to `TranscriptionConfig`
+- [x] `pipeline/transcriber.py`: in `_format_diarized()`, when `speaker_timestamps` is true, read `seg.get("start")`, format as `HH:MM:SS`, emit `[SPEAKER_XX HH:MM:SS] text`; fall back gracefully if `start` is absent
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `speaker_timestamps: false` under `transcription:`
+- [x] Tests: `speaker_timestamps: false` → format unchanged; `speaker_timestamps: true`, start present → timestamp included; `speaker_timestamps: true`, start missing → no exception, label without timestamp; `diarize: false` → setting ignored; timestamp wraps hours correctly
 
 ---
 

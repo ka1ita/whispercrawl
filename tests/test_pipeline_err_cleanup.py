@@ -9,6 +9,7 @@ import pytest
 from whispercrawl.config import (
     CleanupConfig,
     Config,
+    DirSummarizationConfig,
     LoggingConfig,
     OllamaStepConfig,
     ScheduleConfig,
@@ -42,7 +43,7 @@ def _config(tmp_path: Path, *, postprocessing=False, file_summarization=False, d
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=postprocessing, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=file_summarization, output_suffix="_sum"),
-        dir_summarization=OllamaStepConfig(llm_enabled=dir_summarization, output_suffix="_sum"),
+        dir_summarization=DirSummarizationConfig(llm_enabled=dir_summarization, output_suffix="_sum"),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
@@ -124,7 +125,7 @@ class TestDirSummaryErrCleanup:
 
         with (
             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_directory", return_value="dir summary"),
+            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="dir summary"),
         ):
             run_pipeline(_config(tmp_path, dir_summarization=True))
 
@@ -140,7 +141,7 @@ class TestDirSummaryErrCleanup:
         with (
             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.summarizer.Summarizer.summarize_directory",
+                "whispercrawl.pipeline.summarizer.Summarizer.concat_transcriptions",
                 side_effect=SummarizationError("dir failed"),
             ),
         ):
@@ -154,7 +155,7 @@ class TestDirSummaryErrCleanup:
 
         with (
             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_directory", return_value="dir summary"),
+            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="dir summary"),
         ):
             run_pipeline(_config(tmp_path, dir_summarization=True))
 

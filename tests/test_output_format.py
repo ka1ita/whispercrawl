@@ -9,6 +9,7 @@ import pytest
 from whispercrawl.config import (
     CleanupConfig,
     Config,
+    DirSummarizationConfig,
     FormatterConfig,
     LoggingConfig,
     OllamaStepConfig,
@@ -136,7 +137,7 @@ def _html_config(tmp_path: Path) -> Config:
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
@@ -197,7 +198,7 @@ class TestFormatterDisabled:
             transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
             postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
             file_summarization=OllamaStepConfig(llm_enabled=False),
-            dir_summarization=OllamaStepConfig(llm_enabled=False),
+            dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
             cleanup=CleanupConfig(targets=[]),
             logging=LoggingConfig(),
@@ -265,7 +266,7 @@ def _txt_config(tmp_path: Path) -> Config:
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
@@ -297,42 +298,34 @@ class TestTxtPipelineOutput:
         assert (tmp_path / "rec.txt").read_text(encoding="utf-8") == "transcript text"
 
 
-# ── Dir summarizer reads plain .txt ──────────────────────────────────────────
+# ── Dir concat uses in-memory texts, not files on disk ────────────────────────
 
-class TestDirSummarizerReadsPlainText:
-    def test_summarize_directory_reads_txt_in_html_mode(self, tmp_path):
-        """Dir summarizer globs .txt regardless of formatter.format."""
-        from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
-        from unittest.mock import MagicMock
-
-        (tmp_path / "rec_sum.txt").write_text("plain summary", encoding="utf-8")
-
-        summarizer = Summarizer(
-            OllamaStepConfig(llm_enabled=True, output_suffix="_sum"),
-        )
-        captured = []
-
-        def fake_call(text, file=""):
-            captured.append(text)
-            return "combined"
-
-        summarizer._call_ollama = fake_call
-        result = summarizer.summarize_directory(tmp_path, "_sum")
-
-        assert result == "combined"
-        assert captured[0] == "plain summary"
-
-    def test_summarize_directory_ignores_html_files(self, tmp_path):
-        """Even if .html files are present, dir summarizer only reads .txt."""
+class TestDirConcatUsesMemoryTexts:
+    def test_concat_receives_in_memory_text_not_files(self, tmp_path):
+        """concat_transcriptions works from passed dict and does not call ollama."""
         from whispercrawl.pipeline.summarizer import Summarizer
 
-        (tmp_path / "rec_sum.html").write_text("<html>html summary</html>", encoding="utf-8")
+        summarizer = Summarizer(DirSummarizationConfig(llm_enabled=True, output_suffix="_sum"))
+        ollama_called = []
+        summarizer._call_ollama = lambda text, file="": ollama_called.append(text) or ""
 
-        summarizer = Summarizer(OllamaStepConfig(llm_enabled=True, output_suffix="_sum"))
+        result = summarizer.concat_transcriptions({"rec.mp3": "plain transcript"})
 
-        from whispercrawl.pipeline.summarizer import SummarizationError
-        with pytest.raises(SummarizationError, match="No summary files"):
-            summarizer.summarize_directory(tmp_path, "_sum")
+        assert "rec.mp3" in result
+        assert "plain transcript" in result
+        assert ollama_called == []  # concat_transcriptions must not call ollama
+
+    def test_concat_ignores_files_on_disk(self, tmp_path):
+        """Files on disk are irrelevant; only passed texts are concatenated."""
+        from whispercrawl.pipeline.summarizer import Summarizer
+
+        (tmp_path / "rec_sum.txt").write_text("on disk text", encoding="utf-8")
+
+        summarizer = Summarizer(DirSummarizationConfig(llm_enabled=True, output_suffix="_sum"))
+        result = summarizer.concat_transcriptions({"rec.mp3": "in-memory text"})
+
+        assert "in-memory text" in result
+        assert "on disk text" not in result
 
 
 # ── Dir summarization runs before formatter (EPIC-030) ────────────────────────
@@ -353,7 +346,7 @@ class TestDirSumAfterFormatter:
                 output_suffix="_sum",
                 error_suffix="_err",
             ),
-            dir_summarization=OllamaStepConfig(
+            dir_summarization=DirSummarizationConfig(
                 llm_enabled=True,
                 output_suffix="_sum",
                 error_suffix="_err",
@@ -392,6 +385,140 @@ class TestDirSumAfterFormatter:
     def test_txt_dir_sum_succeeds(self, tmp_path):
         self._run(tmp_path, "txt")
         assert (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+
+
+# ── Filename headers in concat output (EPIC-034) ─────────────────────────────
+
+class TestConcatFilenameHeaders:
+    def _summarizer(self):
+        from whispercrawl.pipeline.summarizer import Summarizer
+        return Summarizer(DirSummarizationConfig(llm_enabled=False))
+
+    def test_single_file_header_present(self):
+        result = self._summarizer().concat_transcriptions({"rec.mp3": "hello"})
+        assert result == "rec.mp3\n\nhello"
+
+    def test_two_files_both_headers_present(self):
+        result = self._summarizer().concat_transcriptions({
+            "b.mp3": "text_b",
+            "a.mp3": "text_a",
+        })
+        assert "a.mp3" in result
+        assert "b.mp3" in result
+        assert "text_a" in result
+        assert "text_b" in result
+
+    def test_two_files_sorted_order(self):
+        result = self._summarizer().concat_transcriptions({
+            "b.mp3": "text_b",
+            "a.mp3": "text_a",
+        })
+        assert result.index("a.mp3") < result.index("b.mp3")
+
+    def test_two_files_separator_between_blocks(self):
+        result = self._summarizer().concat_transcriptions({
+            "a.mp3": "text_a",
+            "b.mp3": "text_b",
+        })
+        assert result == "a.mp3\n\ntext_a\n\n---\n\nb.mp3\n\ntext_b"
+
+    def test_empty_dict_raises(self):
+        from whispercrawl.pipeline.summarizer import SummarizationError
+        with pytest.raises(SummarizationError):
+            self._summarizer().concat_transcriptions({})
+
+
+# ── Formatter converts concat file (EPIC-034) ────────────────────────────────
+
+class TestConcatFormatterPass:
+    def _config(self, tmp_path: Path, fmt: str) -> Config:
+        return Config(
+            watch_dir=tmp_path,
+            extensions=[".mp3"],
+            rescan=True,
+            formatter=FormatterConfig(format=fmt),
+            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
+            file_summarization=OllamaStepConfig(llm_enabled=False),
+            dir_summarization=DirSummarizationConfig(llm_enabled=False),
+            schedule=ScheduleConfig(),
+            cleanup=CleanupConfig(targets=[]),
+            logging=LoggingConfig(),
+        )
+
+    def _run(self, tmp_path: Path, fmt: str) -> None:
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+        with patch(
+            "whispercrawl.pipeline.transcriber.httpx.post",
+            return_value=_mock_ok("transcript"),
+        ):
+            run_pipeline(self._config(tmp_path, fmt))
+
+    def test_md_concat_written_as_md(self, tmp_path):
+        self._run(tmp_path, "md")
+        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
+
+    def test_md_no_orphan_concat_txt(self, tmp_path):
+        self._run(tmp_path, "md")
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+
+    def test_html_concat_written_as_html(self, tmp_path):
+        self._run(tmp_path, "html")
+        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
+
+    def test_html_no_orphan_concat_txt(self, tmp_path):
+        self._run(tmp_path, "html")
+        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+
+    def test_txt_concat_remains_txt(self, tmp_path):
+        self._run(tmp_path, "txt")
+        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+
+
+# ── Cleanup removes concat in correct format (EPIC-034) ──────────────────────
+
+class TestConcatCleanup:
+    def _config(self, tmp_path: Path, fmt: str) -> Config:
+        return Config(
+            watch_dir=tmp_path,
+            extensions=[".mp3"],
+            formatter=FormatterConfig(format=fmt),
+            dir_summarization=DirSummarizationConfig(concat_suffix="_concat"),
+            cleanup=CleanupConfig(targets=["_concat"], on="success"),
+            logging=LoggingConfig(),
+        )
+
+    def test_md_cleanup_removes_concat_md(self, tmp_path):
+        audio = tmp_path / "rec.mp3"
+        audio.touch()
+        concat = tmp_path / f"{tmp_path.name}_concat.md"
+        concat.write_text("x")
+        run_cleanup(self._config(tmp_path, "md"))
+        assert not concat.exists()
+
+    def test_md_cleanup_leaves_concat_txt_alone(self, tmp_path):
+        audio = tmp_path / "rec.mp3"
+        audio.touch()
+        concat_txt = tmp_path / f"{tmp_path.name}_concat.txt"
+        concat_txt.write_text("x")
+        run_cleanup(self._config(tmp_path, "md"))
+        assert concat_txt.exists()
+
+    def test_html_cleanup_removes_concat_html(self, tmp_path):
+        audio = tmp_path / "rec.mp3"
+        audio.touch()
+        concat = tmp_path / f"{tmp_path.name}_concat.html"
+        concat.write_text("x")
+        run_cleanup(self._config(tmp_path, "html"))
+        assert not concat.exists()
+
+    def test_txt_cleanup_removes_concat_txt(self, tmp_path):
+        audio = tmp_path / "rec.mp3"
+        audio.touch()
+        concat = tmp_path / f"{tmp_path.name}_concat.txt"
+        concat.write_text("x")
+        run_cleanup(self._config(tmp_path, "txt"))
+        assert not concat.exists()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

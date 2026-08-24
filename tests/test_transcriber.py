@@ -238,6 +238,63 @@ class TestDiarizeLog:
         assert "disk full" in caplog.text
 
 
+# ── speaker_timestamps ────────────────────────────────────────────────────────
+
+class TestSpeakerTimestamps:
+    def test_timestamps_disabled_keeps_colon_format(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "start": 52.0, "text": "Hello."}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_00]: Hello."
+
+    def test_timestamps_enabled_formats_hh_mm_ss(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([
+            {"speaker": "SPEAKER_04", "start": 52.0, "text": "First."},
+            {"speaker": "SPEAKER_05", "start": 113.0, "text": "Second."},
+        ])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=True)).transcribe(audio)
+
+        assert result == "[SPEAKER_04 00:00:52] First.\n[SPEAKER_05 00:01:53] Second."
+
+    def test_timestamps_wrap_hours_correctly(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "start": 3723.0, "text": "Late."}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=True)).transcribe(audio)
+
+        assert result == "[SPEAKER_00 01:02:03] Late."
+
+    def test_missing_start_falls_back_gracefully(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "No start field."}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=True)).transcribe(audio)
+
+        assert result == "[SPEAKER_00] No start field."
+
+    def test_diarize_false_ignores_speaker_timestamps(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+
+        with patch("httpx.post", return_value=_response("plain text")) as mock_post:
+            result = Transcriber(_config(diarize=False, speaker_timestamps=True)).transcribe(audio)
+
+        assert result == "plain text"
+        assert mock_post.call_args.kwargs["params"]["output"] == "txt"
+
+
 # ── error handling ────────────────────────────────────────────────────────────
 
 class TestErrorHandling:

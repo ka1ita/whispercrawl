@@ -27,6 +27,8 @@ class TranscriptionConfig:
     error_suffix: str = "_err"
     timeout: int = 300
 
+    speaker_timestamps: bool = False  # prefix each diarized segment with HH:MM:SS start time
+
     initial_prompt: Optional[str] = None
     vad_filter: Optional[bool] = None
     word_timestamps: Optional[bool] = None
@@ -47,6 +49,10 @@ class OllamaStepConfig:
     timeout: int = 300
     summarize_source: str = "postprocessed"  # "postprocessed" (_fix) | "original" (transcript)
 
+    # strptime format applied to filename stem to extract recording start time;
+    # when set, offsets [SPEAKER_XX HH:MM:SS] timestamps by that wall-clock start time.
+    filename_timestamp_format: Optional[str] = None
+
 
 @dataclass
 class ScheduleConfig:
@@ -58,6 +64,13 @@ class ScheduleConfig:
 class CleanupConfig:
     targets: List[str] = field(default_factory=lambda: ["", "_fix", "_sum", "_diarize.json"])
     on: str = "success"  # "success" | "always"
+
+
+@dataclass
+class DirSummarizationConfig(OllamaStepConfig):
+    concat_source: str = "postprocessed"  # "postprocessed" | "original"
+    underscore_prefix: bool = False        # true → output files named _<dirname>_...
+    concat_suffix: str = "_concat"         # suffix label for the combined transcriptions file
 
 
 @dataclass
@@ -92,7 +105,7 @@ class Config:
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix"))
     file_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
-    dir_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
+    dir_summarization: DirSummarizationConfig = field(default_factory=lambda: DirSummarizationConfig(output_suffix="_sum"))
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -116,6 +129,14 @@ def load_config(path: Path) -> Config:
     if formatter_cfg.text_placement not in ("same_line", "new_line"):
         raise ValueError(f"formatter.text_placement must be 'same_line' or 'new_line', got {formatter_cfg.text_placement!r}")
 
+    dir_sum_raw = raw.get("dir_summarization", {})
+    dir_sum_cfg = _build(DirSummarizationConfig, dir_sum_raw)
+    if dir_sum_cfg.concat_source not in ("postprocessed", "original"):
+        raise ValueError(
+            f"dir_summarization.concat_source must be 'postprocessed' or 'original',"
+            f" got {dir_sum_cfg.concat_source!r}"
+        )
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=Path(raw["watch_dir"]),
@@ -126,7 +147,7 @@ def load_config(path: Path) -> Config:
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),
-        dir_summarization=_build(OllamaStepConfig, raw.get("dir_summarization", {})),
+        dir_summarization=dir_sum_cfg,
         schedule=_build(ScheduleConfig, sched_raw),
         cleanup=_build(CleanupConfig, raw.get("cleanup", {})),
         logging=_build(LoggingConfig, raw.get("logging", {})),

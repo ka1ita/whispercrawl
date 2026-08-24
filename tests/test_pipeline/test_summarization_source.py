@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import Config, OllamaStepConfig, TranscriptionConfig
+from whispercrawl.config import Config, DirSummarizationConfig, OllamaStepConfig, TranscriptionConfig
 from whispercrawl.main import _pick_summary_input, run_pipeline
 
 
@@ -55,7 +55,7 @@ def _minimal_config(tmp_path: Path, summarize_source: str, post_llm: bool = True
             output_suffix="_sum",
             error_suffix="_err",
         ),
-        dir_summarization=OllamaStepConfig(llm_enabled=False),
+        dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
         cleanup=CleanupConfig(),
         logging=LoggingConfig(),
@@ -79,6 +79,7 @@ def _mock_postprocessor_cls(fixed: str):
 def _mock_summarizer_cls(summary: str = "summary"):
     inst = MagicMock()
     inst.summarize_file.return_value = summary
+    inst.concat_transcriptions.return_value = "concatenated"
     cls = MagicMock(return_value=inst)
     return cls, inst
 

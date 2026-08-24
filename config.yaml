@@ -26,8 +26,8 @@ skip_marker: _skip
 formatter:
   format: txt              # txt | html | md (default: txt)
   # enabled: true           # set to false to skip format conversion
-  # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
-  # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
+  speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
+  text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
@@ -37,6 +37,7 @@ transcription:
   output_suffix: ""                 # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
+  speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""                # Hint text passed to the model
   # vad_filter: false                 # Voice activity detection (faster_whisper only)
   # word_timestamps: false            # Return per-word timestamps
@@ -44,14 +45,14 @@ transcription:
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
-  llm_enabled: true    # LLM correction via ollama (default: true)
+  llm_enabled: false    # LLM correction via ollama (default: true)
   regex_enabled: true  # Regex cleanup pass (default: true)
   url: ${OLLAMA_URL:http://localhost:11434}       # ollama base URL
   model: gemma3:1b
   prompt: |
     Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
     ошибки распознавания речи в тексте ниже. Сохрани смысл и стиль речи.
-    Верни только исправленный текст без пояснений.
+    Верни только исправленный текст без пояснений. Не удаляй спикера и время ([SPEAKER_XX XX:XX:XX]).
   regex_patterns:
 #    - '.*Субтитры сделал DimaTorzok.*\n?' - в середине строки
 #    - '.*Субтитры сделал DimaTorzok\n' - конец строки
@@ -86,10 +87,12 @@ postprocessing:
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
   replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
+  filename_timestamp_format: "%Y-%m-%d_%H_%M_%S"  # strptime format for filename stem to offset speaker timestamps
+  #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
-  llm_enabled: true
+  llm_enabled: false
   summarize_source: postprocessed   # "postprocessed" (_fix) | "original" (transcript)
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
@@ -102,11 +105,14 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
+  concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
+  underscore_prefix: true        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
+  concat_suffix: _all          # suffix label for the combined transcriptions file
   llm_enabled: true
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
   prompt: |
-    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
   output_suffix: _sum               # Suffix label (extension comes from formatter.format)
@@ -122,6 +128,7 @@ cleanup:
     - ""
     - _fix
     - _sum
+    - _all
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

@@ -33,6 +33,7 @@ transcription:
   output_suffix: ""
   error_suffix: _err
   timeout: 3600
+  # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
@@ -78,6 +79,8 @@ postprocessing:
   error_suffix: _err
   timeout: 600
   replace_transcription: true
+  # filename_timestamp_format: null  # strptime format for filename stem to offset speaker timestamps
+  #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
@@ -94,11 +97,14 @@ file_summarization:
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
+  concat_source: postprocessed      # "postprocessed" | "original"
+  underscore_prefix: false
+  # concat_suffix: _concat
   llm_enabled: true
   url: ${OLLAMA_URL:http://ollama:11434}
   model: gemma3:1b
   prompt: |
-    Ниже приведены резюме нескольких записей одной встречи или сессии.
+    Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
   output_suffix: _sum

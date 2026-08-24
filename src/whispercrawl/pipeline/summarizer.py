@@ -65,12 +65,9 @@ class Summarizer:
         """Summarize a single transcription."""
         return self._call_ollama(text, file=file)
 
-    def summarize_directory(self, dir_path: Path, file_sum_suffix: str) -> str:
-        """Collect all per-file summaries in dir_path and produce a combined summary."""
-        parts = []
-        for summary_file in sorted(dir_path.glob(f"*{file_sum_suffix}.txt")):
-            parts.append(summary_file.read_text(encoding="utf-8"))
-        if not parts:
-            raise SummarizationError(f"No summary files found in {dir_path}")
-        combined = "\n\n---\n\n".join(parts)
-        return self._call_ollama(combined, file=str(dir_path.name))
+    def concat_transcriptions(self, texts_by_name: "dict[str, str]") -> str:
+        """Join pre-selected transcription texts in sorted filename order with filename headers."""
+        if not texts_by_name:
+            raise SummarizationError("No transcription texts to concatenate")
+        parts = [f"{k}\n\n{texts_by_name[k]}" for k in sorted(texts_by_name)]
+        return "\n\n---\n\n".join(parts)
