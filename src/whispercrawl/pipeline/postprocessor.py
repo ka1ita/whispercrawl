@@ -14,7 +14,7 @@ from whispercrawl.config import OllamaStepConfig
 
 logger = logging.getLogger(__name__)
 
-_SPEAKER_TS_RE = re.compile(r'(\[SPEAKER_\w+ )(\d{2}:\d{2}:\d{2})(\])')
+_TIMESTAMP_RE = re.compile(r'(\[(?:\w+ )?)(\d{2}:\d{2}:\d{2})(\])')
 
 
 class PostProcessingError(Exception):
@@ -86,7 +86,7 @@ class PostProcessor:
             nm, ns = divmod(rem, 60)
             return f"{m.group(1)}{nh:02d}:{nm:02d}:{ns:02d}{m.group(3)}"
 
-        return _SPEAKER_TS_RE.sub(_shift, text)
+        return _TIMESTAMP_RE.sub(_shift, text)
 
     def process(self, text: str, source_path: Path | None = None) -> str:
         if self.config.regex_enabled:

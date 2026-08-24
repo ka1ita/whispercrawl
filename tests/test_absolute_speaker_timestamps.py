@@ -78,6 +78,18 @@ class TestOffsetTimestamps:
         assert "[SPEAKER_01 02:30:00]" in result
         assert "[SPEAKER_02 03:00:00]" in result
 
+    def test_generic_word_label_shifted(self):
+        text = "[XXX 00:00:52] something was said\n"
+        pp = _pp(fmt="%Y-%m-%d_%H_%M_%S")
+        result = pp.process(text, source_path=Path("2026-08-21_09_04_40.ogg"))
+        assert "[XXX 09:05:32]" in result
+
+    def test_bare_timestamp_no_label_shifted(self):
+        text = "[00:00:52] something was said\n"
+        pp = _pp(fmt="%Y-%m-%d_%H_%M_%S")
+        result = pp.process(text, source_path=Path("2026-08-21_09_04_40.ogg"))
+        assert "[09:05:32]" in result
+
     def test_offset_applied_after_regex_and_llm(self):
         """Offset runs last — after regex cleanup removes noise lines."""
         cfg = OllamaStepConfig(
