@@ -19,18 +19,27 @@ This places `whispercrawl.tar` in `deploy/prod/dist/`. Transfer the entire `depl
 
 ```bash
 cd /path/to/deploy/prod
-bash setup.sh
+sudo bash setup.sh
 ```
 
-`setup.sh` creates `audio/` and `logs/` directories and loads the Docker image.
+`setup.sh` creates `.env` (from `.env.example`), creates `audio/` and `logs/`, loads the Docker image, and — when run as root — creates a system user/group matching the container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown`s `audio/`, `logs/`, and `config.yaml` to it so the non-root container can read/write the mounted paths. If you can't run it as root, it prints the exact `sudo` commands to run manually instead.
+
+When run interactively, `setup.sh` prompts for the install directory (default: wherever `setup.sh` lives — press Enter to accept). To skip the prompt, pass it explicitly or set `INSTALL_DIR`:
+
+```bash
+bash setup.sh /opt/whispercrawl
+# or
+INSTALL_DIR=/opt/whispercrawl bash setup.sh
+```
+
+Bind mounts are labeled `:Z` in `docker-compose.prod.yml` for SELinux-enforcing hosts (e.g. RedOS 8); this is a no-op where SELinux isn't active.
 
 ---
 
 ## 2. Configure
 
 ```bash
-# Service URLs
-cp .env.example .env
+# Service URLs (created by setup.sh from .env.example)
 vi .env          # set WHISPER_URL and OLLAMA_URL
 
 # Pipeline settings (language, model, schedule, etc.)
@@ -122,11 +131,11 @@ deploy/prod/
   dist/               ← whispercrawl.tar (transfer from build host)
   audio/              ← mount point for audio/video files (created by setup.sh)
   logs/               ← mount point for log output (created by setup.sh)
-  .env                ← WHISPER_URL, OLLAMA_URL (create from .env.example)
+  .env                ← WHISPER_URL, OLLAMA_URL, APP_UID/APP_GID (created from .env.example by setup.sh)
   .env.example        ← template for .env
   config.yaml         ← pipeline configuration
   docker-compose.prod.yml
-  setup.sh            ← first-run setup (create dirs, load image)
+  setup.sh            ← first-run setup (create dirs, load image, fix ownership/permissions)
   service-start.sh    ← docker compose up -d
   service-down.sh     ← docker compose down
   service-cleanup.sh  ← docker compose run --rm whispercrawl --once --cleanup

@@ -40,13 +40,25 @@ scp -r deploy/prod-local/ user@host:/opt/whispercrawl/
 
 ```bash
 cd /opt/whispercrawl
-bash setup.sh
+sudo bash setup.sh
 ```
 
 `setup.sh` will:
-- Load all three Docker images from `dist/`
-- Create `audio/` and `logs/` directories
+
 - Copy `.env.example` → `.env` (if `.env` does not yet exist)
+- Create `audio/` and `logs/` directories
+- Load all three Docker images from `dist/`
+- When run as root: create a system user/group matching the `whispercrawl` container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown` `audio/`, `logs/`, and `config.yaml` to it, so the non-root container can read/write the mounted paths. If not run as root, it prints the exact `sudo` commands to run manually instead.
+
+When run interactively, `setup.sh` prompts for the install directory (default: wherever `setup.sh` lives — press Enter to accept). To skip the prompt, pass it explicitly or set `INSTALL_DIR`:
+
+```bash
+bash setup.sh /opt/whispercrawl
+# or
+INSTALL_DIR=/opt/whispercrawl bash setup.sh
+```
+
+Bind mounts are labeled `:Z` in `docker-compose.prod-local.yml` for SELinux-enforcing hosts (e.g. RedOS 8); this is a no-op where SELinux isn't active.
 
 ---
 
@@ -166,11 +178,11 @@ deploy/prod-local/
   dist/                         ← image tars (transfer from build host)
   audio/                        ← mount point for audio/video files (created by setup.sh)
   logs/                         ← mount point for log output (created by setup.sh)
-  .env                          ← HF_TOKEN, ASR_MODEL (created from .env.example by setup.sh)
+  .env                          ← HF_TOKEN, ASR_MODEL, APP_UID/APP_GID (created from .env.example by setup.sh)
   .env.example                  ← template for .env
   config.yaml                   ← pipeline configuration
   docker-compose.prod-local.yml
-  setup.sh                      ← first-run setup (load images, create dirs)
+  setup.sh                      ← first-run setup (load images, create dirs, fix ownership/permissions)
   service-start.sh              ← docker compose up -d
   service-down.sh               ← docker compose down
   DEPLOY.md                     ← this file

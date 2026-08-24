@@ -61,9 +61,9 @@ services:
       OLLAMA_URL: http://ollama:11434
       LOGS_DIR: /logs
     volumes:
-      - ./audio:/audio
-      - ./config.yaml:/config.yaml:ro
-      - ./logs:/logs
+      - ./audio:/audio:Z
+      - ./config.yaml:/config.yaml:ro,Z
+      - ./logs:/logs:Z
     depends_on:
       whisper:
         condition: service_started

@@ -4,6 +4,19 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-038: Setup Scripts — Install Dir, Permissions, and Docker Volume User
+
+- [x] `deploy/prod/.env.example`, `deploy/prod-local/.env.example`: add `APP_UID`/`APP_GID` (default 1000/1000, matching `Dockerfile`'s `appuser`)
+- [x] `deploy/prod/setup.sh`, `deploy/prod-local/setup.sh`: resolve `INSTALL_DIR` — positional arg or `INSTALL_DIR` env var skips prompting; otherwise prompt interactively (`read -p`) when stdin is a tty, default script location when it isn't (non-interactive/CI); `cd` into it; print it
+- [x] Both `setup.sh`: copy `.env.example` → `.env` first (if absent), then source `.env` to read `APP_UID`/`APP_GID`
+- [x] Both `setup.sh`: `mkdir -p audio logs` with explicit `chmod 750`
+- [x] Both `setup.sh`: when running as root — create/reuse a system group/user at `APP_GID`/`APP_UID` (`whispercrawl`), `chown -R` `audio/`+`logs/` to it, `chown root:$APP_GID` + `chmod 640` `config.yaml`
+- [x] Both `setup.sh`: when not running as root — skip ownership changes, print the exact `sudo` commands to run manually instead of failing
+- [x] `deploy/prod/docker-compose.prod.yml`, `deploy/prod-local/docker-compose.prod-local.yml`: add `:Z` SELinux relabel suffix to the `audio`, `config.yaml`, and `logs` bind mounts for the `whispercrawl` service (no-op on non-SELinux hosts, covers RedOS 8 enforcing mode without runtime detection)
+- [x] `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md`: document `INSTALL_DIR` override, ownership/permission step, `sudo` fallback, and `:Z` SELinux behavior
+
+---
+
 ## EPIC-037: Multiple filename_timestamp_format Values
 
 - [x] `config.py`: widen `filename_timestamp_format` type to `Optional[Union[str, List[str]]]`
