@@ -79,12 +79,12 @@ postprocessing:
   error_suffix: _err
   timeout: 600
   replace_transcription: true
-  # filename_timestamp_format: null  # strptime format for filename stem to offset speaker timestamps
+  filename_timestamp_format:
+    - "%Y-%m-%d_%H_%M_%S"
+    - "%Y-%m-%d-%H-%M-%S"
+  #filename_timestamp_format: "%Y-%m-%d_%H_%M_%S"  # strptime format for filename stem to offset speaker timestamps
   #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
-  #   accepts a list of formats tried in order, e.g.:
-  #     filename_timestamp_format:
-  #       - "%Y-%m-%d_%H_%M_%S"
-  #       - "%Y-%m-%d-%H-%M-%S"
+  #   accepts a list of formats tried in order
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
