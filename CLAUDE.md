@@ -78,6 +78,7 @@ Each step is independent and skippable. On error, `<file>_err.txt` is written an
 - A file is only written on **success**. On error, `_err.txt` is written instead.
 - **Language detection**: filename suffix `_ru`, `_en`, or `_auto` overrides the config default language passed to whisper.
 - **Skip mode** (`rescan: false`): if `<file>.txt` already exists, that file is skipped entirely.
+- **Persisted index** (`state.enabled: true`, default): `<watch_dir>/.whispercrawl/state.db` (SQLite) records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
 
 ### Config
 

@@ -25,6 +25,15 @@ skip_marker: _skip
 # Files older than this are skipped and newer files are processed first (mtime, in days); omit/null = unbounded
 # max_age_days: 180
 
+# Persisted index of processed files — avoids re-checking the whole tree every run.
+# Deleting the file is safe: the next run re-derives it from existing output files (no reprocessing).
+state:
+  enabled: true
+  # path: ./audio/.whispercrawl/state.db   # default: <watch_dir>/.whispercrawl/state.db
+
+# Max files to process per run; the rest are picked up on the next scheduled run; omit/null = unlimited
+# max_files_per_run: 500
+
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
   format: txt              # txt | html | md (default: txt)

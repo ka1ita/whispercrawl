@@ -31,6 +31,9 @@ config/config.*.local.yaml
 .DS_Store
 Thumbs.db
 
+# Persisted processing index (auto-created beside the watched media; safe to delete)
+**/.whispercrawl/
+
 # Output files produced by the service (don't commit processed results)
 *.txt
 *.html

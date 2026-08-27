@@ -117,12 +117,36 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
                 logger.info("Cleaned: %s", err_file)
             removed += 1
 
+    if config.state.enabled:
+        from whispercrawl.state import default_state_path
+        state_path = config.state.path or default_state_path(config.watch_dir)
+        if dry_run:
+            logger.info("Would clear processing index: %s", state_path)
+        elif Path(state_path).exists():
+            from whispercrawl.state import ProcessingState
+            with ProcessingState.open(state_path) as st:
+                st.clear()
+            logger.info("Cleared processing index: %s", state_path)
+
     if removed == 0:
         logger.info("No output files found in %s", config.watch_dir)
 
 
 def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -> None:
     """Execute the full pipeline for all matching files."""
+    from whispercrawl.state import NullState, open_state
+
+    if dry_run:
+        state = NullState()
+    else:
+        state = open_state(config.state.enabled, config.state.path, config.watch_dir)
+    try:
+        _run_pipeline(config, state, dry_run, cleanup)
+    finally:
+        state.close()
+
+
+def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
     from whispercrawl.file_walker import iter_media_files
     from whispercrawl.pipeline.cleaner import Cleaner
     from whispercrawl.pipeline.formatter import Formatter
@@ -139,7 +163,16 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.formatter.format,
         config.skip_marker,
         config.max_age_days,
+        state,
     ))
+
+    if config.max_files_per_run is not None and len(files) > config.max_files_per_run:
+        total = len(files)
+        files = files[: config.max_files_per_run]
+        logger.info(
+            "Processing %d of %d pending files; %d remain for the next run",
+            len(files), total, total - len(files),
+        )
 
     fmt = config.formatter.format
     cleaner = Cleaner(config.cleanup, fmt)
@@ -160,6 +193,10 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         text_placement=config.formatter.text_placement,
     )
 
+    def _record(rel: str, fst, status: str, detail: str = "") -> None:
+        if fst is not None:
+            state.mark(rel, status, fst.st_mtime, fst.st_size, detail)
+
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
         transcriber = Transcriber(config.transcription, svc_log, config.logging.diarize_log)
         postprocessor = (
@@ -179,6 +216,11 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         for file_path in files:
             logger.info("Processing: %s", file_path)
             success = True
+            rel = str(file_path.relative_to(config.watch_dir))
+            try:
+                fst = file_path.stat()
+            except OSError:
+                fst = None
 
             if config.rescan:
                 cleaner.clean_other_formats(file_path, _rescan_labels)
@@ -190,7 +232,11 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                 _write_error(file_path, config.transcription.error_suffix, str(e))
                 if cleanup:
                     cleaner.clean(file_path, success=False)
+                _record(rel, fst, "error", "transcription failed")
                 continue
+            except (KeyboardInterrupt, SystemExit):
+                _record(rel, fst, "partial", "interrupted mid-pipeline")
+                raise
 
             txt_path = output_path(file_path, config.transcription.output_suffix, "txt")
             txt_path.write_text(transcript, encoding="utf-8")
@@ -249,6 +295,9 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
                     err_path.unlink()
                     logger.debug("Removed stale error file: %s", err_path)
 
+            _record(rel, fst, "done" if success else "error",
+                    "" if success else "pipeline step failed")
+
         prefix = "_" if config.dir_summarization.underscore_prefix else ""
         for dir_path in sorted(dir_file_texts):
             dir_base = dir_path / (prefix + dir_path.name)
@@ -282,6 +331,10 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             except SummarizationError as e:
                 logger.error("Directory summarization failed for %s: %s", dir_path, e)
                 dir_err_path.write_text(str(e), encoding="utf-8")
+            finally:
+                # free this directory's transcripts; peak memory stays bounded
+                # by one directory (or by max_files_per_run) rather than the whole run
+                dir_file_texts.pop(dir_path, None)
 
         for path in all_outputs_to_format:
             if path.exists():

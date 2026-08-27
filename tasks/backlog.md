@@ -4,6 +4,27 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-040: Persisted Processing Index and Per-Run File Cap for Large Catalogs
+
+- [x] `state.py` (new): `ProcessingState` class over a single SQLite file (stdlib `sqlite3`, WAL); schema `files(path, mtime, size, status, updated_at, detail)` + `meta(key, value)`; `path` stored relative to `watch_dir`; `status` ∈ `done`|`error`|`partial` (EPIC-040, 2026-08-27)
+- [x] `state.py`: API — `open(path)` (create+migrate, context manager), `lookup(rel)`, `is_current(rel, mtime, size)` (true only when a `done` record matches mtime **and** size), `mark(rel, status, mtime, size, detail="")`, `forget(rel)`, `clear()`; plus a `NullState` no-op variant (EPIC-040, 2026-08-27)
+- [x] `config.py`: add `StateConfig(enabled: bool = True, path: Optional[str] = None)`; add `state: StateConfig` to `Config`; default `path` resolved in `load_config` to `<watch_dir>/.whispercrawl/state.db` (EPIC-040, 2026-08-27)
+- [x] `config.py`: add `max_files_per_run: Optional[int] = None` to `Config` (beside `max_age_days`); `load_config` raises `ValueError` if set and `< 1` (EPIC-040, 2026-08-27)
+- [x] `file_walker.py`: add `state=None` param to `iter_media_files`; when `rescan` is false and state supplied, skip files where `state.is_current(...)` with no `exists()` probes; on un-indexed files fall back to the output-existence check and `state.mark(..., "done", ...)` when outputs are found (back-fill, no reprocessing); precedence skip-marker → age → state → output-existence (EPIC-040, 2026-08-27)
+- [x] `file_walker.py`: exclude `.whispercrawl/` from `rglob` traversal (EPIC-040, 2026-08-27)
+- [x] `main.py` `run_pipeline()`: open state (or `NullState` when disabled) in a `with` block; pass to `iter_media_files`; apply `max_files_per_run` slice after the newest-first sort; log `N of M pending; K remain` (EPIC-040, 2026-08-27)
+- [x] `main.py` `run_pipeline()`: `state.mark` `done`/`error`/`partial` per file; `del dir_file_texts[dir_path]` after each directory's summary/concat is written (EPIC-040, 2026-08-27)
+- [x] `main.py` dry-run path: pass state through (read-only, never writes) (EPIC-040, 2026-08-27)
+- [x] `main.py` `run_cleanup()`: call `state.clear()` after deleting outputs (non-dry-run only); dry-run logs that it would clear (EPIC-040, 2026-08-27)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `state:` block and commented `max_files_per_run:` near `max_age_days` (EPIC-040, 2026-08-27)
+- [x] `docs/architecture/overview.md`, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md`, `CLAUDE.md`: document the state store location, that deleting it is safe (re-derives from outputs, no reprocessing), and `max_files_per_run` (EPIC-040, 2026-08-27)
+- [x] Tests — `tests/test_state.py` (new): open/migrate; `mark`→`lookup`; `is_current` true only on matching mtime+size; stale mtime → not current; `clear`/`forget`; context-manager close; `NullState` behavior (EPIC-040, 2026-08-27)
+- [x] Tests — `tests/test_file_walker.py`: indexed `done` file → skipped with zero `exists()` calls; changed mtime → re-queued; un-indexed + existing outputs → skipped and recorded `done`; un-indexed no outputs → queued; `rescan: true` → indexed files still yielded; `state=None` → identical to pre-epic; age/skip-marker still apply first (EPIC-040, 2026-08-27)
+- [x] Tests — `tests/test_config.py`: `state` defaults; `max_files_per_run` defaults `None`; `max_files_per_run: 0` → `ValueError` (EPIC-040, 2026-08-27)
+- [x] Tests — pipeline/integration: `max_files_per_run=k` over N files → exactly k processed, N-k pending, second run finishes the rest; interrupted run (fail on file 3 of 5) → 1–2 `done`, 3 `error`, 4–5 pending, rerun completes without redoing 1–2; `--cleanup` empties the store; `state.enabled: false` → no `state.db`, matches EPIC-039 (EPIC-040, 2026-08-27)
+
+---
+
 ## EPIC-039: Prioritize Newest Files and Bound Scan Age for Large Catalogs
 
 - [x] `file_walker.py`: add `max_age_days: Optional[int] = None` parameter to `iter_media_files`; skip files whose mtime is older than the window (log DEBUG); collect surviving candidates and yield them sorted by mtime descending (newest first) instead of alphabetically

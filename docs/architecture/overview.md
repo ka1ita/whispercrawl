@@ -28,6 +28,14 @@ Recursively scans the configured directory for audio/video files. Supports two m
 - **skip-processed**: skip files that already have a corresponding output file (`<stem>.txt`, `<stem>.md`, or `<stem>.html` — any supported format). This means changing `formatter.format` between runs will not re-trigger processing for files that already have output in any format.
 - **full-rescan** (`rescan: true`): process all matching files regardless of existing output.
 
+Files are yielded **newest first** (by mtime). `max_age_days` bounds the scan to a recent window. When the persisted index (`state.py`) is enabled, files recorded as `done` with an unchanged mtime/size are skipped without probing the filesystem for output files.
+
+### `state.py`
+
+Persisted index of processed files, backed by a single SQLite file at `<watch_dir>/.whispercrawl/state.db` (overridable via `state.path`; disable entirely with `state.enabled: false`). Each run records `done` / `error` per file so subsequent runs answer "already processed?" with an indexed lookup instead of up to three `exists()` probes per file, and an interrupted run resumes without redoing completed work. A file absent from the index but already carrying an output file is recorded as `done` on first sight — so enabling the index on an existing catalog reprocesses nothing. **Deleting `state.db` is safe**: the next run rebuilds it from whichever output files exist.
+
+`max_files_per_run` caps how many files a single run processes; the remainder are picked up on the next scheduled run (safe because progress is persisted).
+
 ### `pipeline/`
 
 All pipeline steps write plain `.txt` files internally. The Formatter runs last and converts to the final output format.
@@ -55,6 +63,7 @@ Key sub-configs:
 | `FormatterConfig` | Output format (`txt`/`html`/`md`), `enabled` flag, speaker label style |
 | `CleanupConfig` | Which output suffixes `--cleanup` removes |
 | `ScheduleConfig` | Cron or interval schedule |
+| `StateConfig` | Persisted processing-index toggle and path |
 | `LoggingConfig` | App log file, request logging, diarization JSON sidecar |
 
 ### `scheduler.py`

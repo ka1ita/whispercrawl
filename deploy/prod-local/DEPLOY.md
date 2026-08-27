@@ -171,12 +171,26 @@ tail -f logs/service_requests.ndjson
 
 ---
 
+## Processing index
+
+`whispercrawl` keeps a persisted index of processed files at `audio/.whispercrawl/state.db`
+(SQLite). It lets each scheduled run skip files it has already handled without re-scanning
+the whole tree, and lets an interrupted run resume where it left off.
+
+- **Safe to delete.** The next run rebuilds it from whichever output files exist — nothing is reprocessed.
+- **Backups:** either include `audio/.whispercrawl/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
+- Disable with `state.enabled: false` in `config.yaml`. Set `max_files_per_run` to cap how many
+  files each run processes when first draining a large backlog.
+
+---
+
 ## Directory layout
 
 ```text
 deploy/prod-local/
   dist/                         ← image tars (transfer from build host)
   audio/                        ← mount point for audio/video files (created by setup.sh)
+  audio/.whispercrawl/state.db  ← persisted processing index (auto-created; safe to delete)
   logs/                         ← mount point for log output (created by setup.sh)
   .env                          ← HF_TOKEN, ASR_MODEL, APP_UID/APP_GID (created from .env.example by setup.sh)
   .env.example                  ← template for .env

@@ -83,6 +83,12 @@ class FormatterConfig:
 
 
 @dataclass
+class StateConfig:
+    enabled: bool = True             # persisted index of processed files
+    path: Optional[str] = None       # default: <watch_dir>/.whispercrawl/state.db
+
+
+@dataclass
 class LoggingConfig:
     requests: bool = False
     diarize_log: bool = False            # save raw JSON diarization response to <file>_diarize.json
@@ -102,7 +108,9 @@ class Config:
     rescan: bool = False  # False = skip-processed, True = full rescan
     skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
     max_age_days: Optional[int] = None  # skip files older than this many days (mtime); None = unbounded
+    max_files_per_run: Optional[int] = None  # cap files processed per run; None = unlimited
     formatter: FormatterConfig = field(default_factory=FormatterConfig)
+    state: StateConfig = field(default_factory=StateConfig)
 
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
     postprocessing: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_fix"))
@@ -139,14 +147,27 @@ def load_config(path: Path) -> Config:
             f" got {dir_sum_cfg.concat_source!r}"
         )
 
+    watch_dir = Path(raw["watch_dir"])
+
+    state_cfg = _build(StateConfig, raw.get("state", {}) or {})
+    if state_cfg.path is None:
+        from whispercrawl.state import default_state_path
+        state_cfg.path = default_state_path(watch_dir)
+
+    max_files_per_run = raw.get("max_files_per_run")
+    if max_files_per_run is not None and max_files_per_run < 1:
+        raise ValueError(f"max_files_per_run must be >= 1, got {max_files_per_run!r}")
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
-        watch_dir=Path(raw["watch_dir"]),
+        watch_dir=watch_dir,
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
         skip_marker=raw.get("skip_marker", "_skip"),
         max_age_days=raw.get("max_age_days"),
+        max_files_per_run=max_files_per_run,
         formatter=formatter_cfg,
+        state=state_cfg,
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from whispercrawl.file_walker import detect_language, iter_media_files
+from whispercrawl.state import ProcessingState
 
 EXTENSIONS = [".mp3", ".wav", ".mp4"]
 
@@ -173,3 +174,106 @@ class TestIterMediaFiles:
             tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip", max_age_days=5,
         ))
         assert [f.name for f in files] == ["keep.mp3"]
+
+
+class TestIterMediaFilesWithState:
+    def _state(self, tmp_path: Path) -> ProcessingState:
+        return ProcessingState.open(tmp_path / "state.db")
+
+    def test_indexed_done_file_skipped_without_exists_probes(self, tmp_path: Path, monkeypatch):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        st = self._state(tmp_path)
+        stat = rec.stat()
+        st.mark("rec.mp3", "done", stat.st_mtime, stat.st_size)
+
+        calls = {"n": 0}
+        real_exists = Path.exists
+
+        def counting_exists(self):
+            calls["n"] += 1
+            return real_exists(self)
+
+        monkeypatch.setattr(Path, "exists", counting_exists)
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+
+        assert files == []
+        assert calls["n"] == 0
+
+    def test_indexed_file_with_changed_mtime_is_requeued(self, tmp_path: Path):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        st = self._state(tmp_path)
+        st.mark("rec.mp3", "done", 1.0, rec.stat().st_size)  # stale mtime
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+        assert [f.name for f in files] == ["rec.mp3"]
+
+    def test_unindexed_file_with_output_is_backfilled_and_skipped(self, tmp_path: Path):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        (tmp_path / "rec.txt").touch()
+        st = self._state(tmp_path)
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+        assert files == []
+
+        stat = rec.stat()
+        assert st.is_current("rec.mp3", stat.st_mtime, stat.st_size)
+
+    def test_unindexed_file_without_output_is_queued(self, tmp_path: Path):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        st = self._state(tmp_path)
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+        assert [f.name for f in files] == ["rec.mp3"]
+        assert st.lookup("rec.mp3") is None
+
+    def test_rescan_yields_indexed_done_files(self, tmp_path: Path):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        st = self._state(tmp_path)
+        stat = rec.stat()
+        st.mark("rec.mp3", "done", stat.st_mtime, stat.st_size)
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, state=st))
+        assert [f.name for f in files] == ["rec.mp3"]
+
+    def test_state_none_matches_pre_epic_behavior(self, tmp_path: Path):
+        (tmp_path / "a.mp3").touch()
+        (tmp_path / "b.mp3").touch()
+        (tmp_path / "b.txt").touch()
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=None))
+        assert [f.name for f in files] == ["a.mp3"]
+
+    def test_skip_marker_and_age_apply_before_state(self, tmp_path: Path):
+        now = time.time()
+        marked = tmp_path / "rec_skip.mp3"
+        marked.touch()
+        st = self._state(tmp_path)
+        # even if the index somehow says "done", the marker check wins and short-circuits
+        st.mark("rec_skip.mp3", "done", marked.stat().st_mtime, marked.stat().st_size)
+
+        old = tmp_path / "old.mp3"
+        old.touch()
+        os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+
+        keep = tmp_path / "keep.mp3"
+        keep.touch()
+
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=False,
+            skip_marker="_skip", max_age_days=5, state=st,
+        ))
+        assert [f.name for f in files] == ["keep.mp3"]
+
+    def test_state_dir_is_not_walked(self, tmp_path: Path):
+        (tmp_path / "rec.mp3").touch()
+        hidden = tmp_path / ".whispercrawl"
+        hidden.mkdir()
+        (hidden / "rec.mp3").touch()  # would be a false candidate if traversed
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True))
+        assert [f.name for f in files] == ["rec.mp3"]
