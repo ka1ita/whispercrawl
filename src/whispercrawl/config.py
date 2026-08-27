@@ -101,6 +101,7 @@ class Config:
     extensions: List[str]
     rescan: bool = False  # False = skip-processed, True = full rescan
     skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
+    max_age_days: Optional[int] = None  # skip files older than this many days (mtime); None = unbounded
     formatter: FormatterConfig = field(default_factory=FormatterConfig)
 
     transcription: TranscriptionConfig = field(default_factory=TranscriptionConfig)
@@ -144,6 +145,7 @@ def load_config(path: Path) -> Config:
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
         skip_marker=raw.get("skip_marker", "_skip"),
+        max_age_days=raw.get("max_age_days"),
         formatter=formatter_cfg,
         transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),

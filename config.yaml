@@ -22,6 +22,9 @@ rescan: false
 # Files whose name contains this string are skipped entirely (case-insensitive); set to "" to disable
 skip_marker: _skip
 
+# Files older than this are skipped and newer files are processed first (mtime, in days); omit/null = unbounded
+# max_age_days: 180
+
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
   format: txt              # txt | html | md (default: txt)

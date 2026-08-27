@@ -1,4 +1,6 @@
 ﻿"""Tests for file_walker module."""
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -110,3 +112,64 @@ class TestIterMediaFiles:
         (tmp_path / "rec_skip.mp3").touch()
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip"))
         assert files == []
+
+    def test_yields_newest_first(self, tmp_path: Path):
+        old = tmp_path / "old.mp3"
+        mid = tmp_path / "mid.mp3"
+        new = tmp_path / "new.mp3"
+        now = time.time()
+        old.touch()
+        os.utime(old, (now - 300, now - 300))
+        mid.touch()
+        os.utime(mid, (now - 200, now - 200))
+        new.touch()
+        os.utime(new, (now - 100, now - 100))
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True))
+        assert [f.name for f in files] == ["new.mp3", "mid.mp3", "old.mp3"]
+
+    def test_max_age_days_excludes_older_files(self, tmp_path: Path):
+        old = tmp_path / "old.mp3"
+        recent = tmp_path / "recent.mp3"
+        now = time.time()
+        old.touch()
+        os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+        recent.touch()
+        os.utime(recent, (now - 86400, now - 86400))
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, max_age_days=5))
+        assert [f.name for f in files] == ["recent.mp3"]
+
+    def test_max_age_days_none_is_unbounded(self, tmp_path: Path):
+        ancient = tmp_path / "ancient.mp3"
+        now = time.time()
+        ancient.touch()
+        os.utime(ancient, (now - 3650 * 86400, now - 3650 * 86400))
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, max_age_days=None))
+        assert [f.name for f in files] == ["ancient.mp3"]
+
+    def test_max_age_days_combines_with_skip_marker_and_output_check(self, tmp_path: Path):
+        now = time.time()
+
+        marked = tmp_path / "rec_skip.mp3"
+        marked.touch()
+        os.utime(marked, (now, now))
+
+        old = tmp_path / "old.mp3"
+        old.touch()
+        os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+
+        already_done = tmp_path / "done.mp3"
+        already_done.touch()
+        os.utime(already_done, (now, now))
+        (tmp_path / "done.txt").touch()
+
+        keep = tmp_path / "keep.mp3"
+        keep.touch()
+        os.utime(keep, (now, now))
+
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip", max_age_days=5,
+        ))
+        assert [f.name for f in files] == ["keep.mp3"]

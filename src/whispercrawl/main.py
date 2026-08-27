@@ -138,6 +138,7 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
         config.rescan,
         config.formatter.format,
         config.skip_marker,
+        config.max_age_days,
     ))
 
     fmt = config.formatter.format

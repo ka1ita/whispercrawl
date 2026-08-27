@@ -4,6 +4,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-039: Prioritize Newest Files and Bound Scan Age for Large Catalogs
+
+- [x] `file_walker.py`: add `max_age_days: Optional[int] = None` parameter to `iter_media_files`; skip files whose mtime is older than the window (log DEBUG); collect surviving candidates and yield them sorted by mtime descending (newest first) instead of alphabetically
+- [x] `config.py`: add `max_age_days: Optional[int] = None` to `Config`; parse from `raw.get("max_age_days")` in `load_config`
+- [x] `main.py`: pass `config.max_age_days` to `iter_media_files(...)` in `run_pipeline()`
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add commented `# max_age_days: 180` near `skip_marker`
+- [x] Tests: files with different mtimes → yielded newest-first; `max_age_days` excludes older files; `max_age_days: None` → unbounded (unchanged behavior); age filter combines correctly with `rescan`, `skip_marker`, and output-existence checks
+
+---
+
 ## EPIC-038: Setup Scripts — Install Dir, Permissions, and Docker Volume User
 
 - [x] `deploy/prod/.env.example`, `deploy/prod-local/.env.example`: add `APP_UID`/`APP_GID` (default 1000/1000, matching `Dockerfile`'s `appuser`)
