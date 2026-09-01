@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 from whispercrawl.state import NullState, ProcessingState, default_state_path, open_state
@@ -83,6 +84,84 @@ class TestProcessingState:
             assert st.is_current("x.mp3", 5.0, 5)
 
 
+class TestStepResume:
+    def test_mark_step_then_completed_steps(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            assert st.completed_steps("x.mp3", 1.0, 10) == {"transcribe"}
+
+    def test_mark_step_accumulates_for_unchanged_mtime_size(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            st.mark_step("x.mp3", "postprocess", 1.0, 10)
+            assert st.completed_steps("x.mp3", 1.0, 10) == {"transcribe", "postprocess"}
+
+    def test_mark_step_resets_on_mtime_change(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            st.mark_step("x.mp3", "transcribe", 2.0, 10)  # file changed, new attempt
+            assert st.completed_steps("x.mp3", 2.0, 10) == {"transcribe"}
+            assert st.completed_steps("x.mp3", 1.0, 10) == set()
+
+    def test_completed_steps_empty_for_unknown_path(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            assert st.completed_steps("nope.mp3", 1.0, 1) == set()
+
+    def test_completed_steps_empty_when_mtime_mismatches(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            assert st.completed_steps("x.mp3", 1.5, 10) == set()
+
+    def test_completed_steps_empty_when_size_mismatches(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            assert st.completed_steps("x.mp3", 1.0, 11) == set()
+
+    def test_mark_step_sets_status_partial(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            assert st.lookup("x.mp3").status == "partial"
+
+    def test_final_mark_done_preserves_recorded_steps(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            st.mark_step("x.mp3", "postprocess", 1.0, 10)
+            st.mark("x.mp3", "done", 1.0, 10)
+            rec = st.lookup("x.mp3")
+        assert rec.status == "done"
+        assert set(rec.steps.split(",")) == {"transcribe", "postprocess"}
+
+    def test_migration_adds_steps_column_to_v1_db(self, tmp_path: Path):
+        db = tmp_path / "old.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE files (
+                path       TEXT PRIMARY KEY,
+                mtime      REAL NOT NULL,
+                size       INTEGER NOT NULL,
+                status     TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                detail     TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            """
+        )
+        conn.execute(
+            "INSERT INTO files(path, mtime, size, status, updated_at, detail) "
+            "VALUES ('old.mp3', 1.0, 10, 'done', 1.0, '')"
+        )
+        conn.execute("INSERT INTO meta(key, value) VALUES ('schema_version', '1')")
+        conn.commit()
+        conn.close()
+
+        with ProcessingState.open(db) as st:
+            rec = st.lookup("old.mp3")
+            assert rec.status == "done"
+            assert rec.steps == ""
+            assert st.is_current("old.mp3", 1.0, 10) is True
+
+
 class TestNullState:
     def test_is_current_always_false(self):
         ns = NullState()
@@ -95,6 +174,15 @@ class TestNullState:
         ns.clear()
         ns.close()
         assert ns.lookup("x") is None
+
+    def test_completed_steps_always_empty(self):
+        ns = NullState()
+        assert ns.completed_steps("x", 1.0, 1) == set()
+
+    def test_mark_step_is_noop(self):
+        ns = NullState()
+        ns.mark_step("x", "transcribe", 1.0, 1)
+        assert ns.completed_steps("x", 1.0, 1) == set()
 
     def test_context_manager(self):
         with NullState() as ns:

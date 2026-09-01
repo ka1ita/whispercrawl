@@ -269,6 +269,33 @@ class TestIterMediaFilesWithState:
         ))
         assert [f.name for f in files] == ["keep.mp3"]
 
+    def test_error_row_with_existing_output_is_still_queued(self, tmp_path: Path):
+        # Regression: an earlier step's leftover output (e.g. the transcript)
+        # must not silently overwrite a recorded error with "done".
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        (tmp_path / "rec.txt").touch()  # transcription succeeded
+        st = self._state(tmp_path)
+        stat = rec.stat()
+        st.mark("rec.mp3", "error", stat.st_mtime, stat.st_size, detail="postprocess failed")
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+
+        assert [f.name for f in files] == ["rec.mp3"]
+        assert st.lookup("rec.mp3").status == "error"
+
+    def test_partial_row_with_existing_output_is_still_queued(self, tmp_path: Path):
+        rec = tmp_path / "rec.mp3"
+        rec.touch()
+        (tmp_path / "rec.txt").touch()
+        st = self._state(tmp_path)
+        stat = rec.stat()
+        st.mark("rec.mp3", "partial", stat.st_mtime, stat.st_size, detail="interrupted")
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=False, state=st))
+
+        assert [f.name for f in files] == ["rec.mp3"]
+
     def test_state_dir_is_not_walked(self, tmp_path: Path):
         (tmp_path / "rec.mp3").touch()
         hidden = tmp_path / ".whispercrawl"

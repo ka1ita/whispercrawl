@@ -79,6 +79,7 @@ Each step is independent and skippable. On error, `<file>_err.txt` is written an
 - **Language detection**: filename suffix `_ru`, `_en`, or `_auto` overrides the config default language passed to whisper.
 - **Skip mode** (`rescan: false`): if `<file>.txt` already exists, that file is skipped entirely.
 - **Persisted index** (`state.enabled: true`, default): `<watch_dir>/.whispercrawl/state.db` (SQLite) records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
+- **Per-step resume**: the index also records which pipeline step (transcribe/postprocess/file-summarize) last completed for each file's current mtime/size. An interrupted run resumes mid-file — already-written step outputs are read back from disk instead of re-calling whisper/ollama — rather than restarting the whole file. A changed file (new mtime/size) discards its recorded steps and reprocesses from scratch.
 
 ### Config
 

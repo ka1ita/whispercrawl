@@ -36,6 +36,8 @@ Persisted index of processed files, backed by a single SQLite file at `<watch_di
 
 `max_files_per_run` caps how many files a single run processes; the remainder are picked up on the next scheduled run (safe because progress is persisted).
 
+**Per-step resume.** Alongside the overall `done`/`error`/`partial` status, each file's row also tracks which individual pipeline step last completed (`transcribe`, `postprocess`, `file_summarize`) for its current `mtime`/`size`. If a run is interrupted mid-file — a crash, a `max_files_per_run` cutoff, `Ctrl-C` — the next run reads the already-written output of each completed step back from disk instead of re-calling the ASR/LLM services, and only resumes the steps that didn't finish. A row whose `mtime`/`size` no longer match the file on disk (it changed since the last attempt) discards its recorded steps and reprocesses from scratch. A file with a recorded `error`/`partial` row is always re-queued for another attempt, even if an earlier step's output already exists on disk — it is never silently treated as fully `done` just because one output file happens to be present.
+
 ### `pipeline/`
 
 All pipeline steps write plain `.txt` files internally. The Formatter runs last and converts to the final output format.

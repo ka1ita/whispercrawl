@@ -18,7 +18,7 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 STATE_DIRNAME = ".whispercrawl"
 STATE_FILENAME = "state.db"
 
@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS files (
     size       INTEGER NOT NULL,
     status     TEXT NOT NULL,
     updated_at REAL NOT NULL,
-    detail     TEXT NOT NULL DEFAULT ''
+    detail     TEXT NOT NULL DEFAULT '',
+    steps      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
@@ -48,6 +49,7 @@ class Record:
     status: str  # "done" | "error" | "partial"
     updated_at: float
     detail: str
+    steps: str = ""
 
 
 class ProcessingState:
@@ -64,8 +66,11 @@ class ProcessingState:
         conn = sqlite3.connect(str(path))
         conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript(_SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
+        if "steps" not in columns:
+            conn.execute("ALTER TABLE files ADD COLUMN steps TEXT NOT NULL DEFAULT ''")
         conn.execute(
-            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO NOTHING",
+            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (SCHEMA_VERSION,),
         )
         conn.commit()
@@ -73,10 +78,39 @@ class ProcessingState:
 
     def lookup(self, rel_path: str) -> Optional[Record]:
         row = self._conn.execute(
-            "SELECT path, mtime, size, status, updated_at, detail FROM files WHERE path = ?",
+            "SELECT path, mtime, size, status, updated_at, detail, steps FROM files WHERE path = ?",
             (rel_path,),
         ).fetchone()
         return Record(*row) if row else None
+
+    def completed_steps(self, rel_path: str, mtime: float, size: int) -> set:
+        """Steps recorded as completed for this file's current mtime/size generation.
+
+        Returns an empty set when there is no row, or when the stored row's
+        mtime/size don't match — a changed file discards any recorded progress.
+        """
+        rec = self.lookup(rel_path)
+        if rec is None or abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size:
+            return set()
+        return {s for s in rec.steps.split(",") if s}
+
+    def mark_step(self, rel_path: str, step: str, mtime: float, size: int) -> None:
+        """Record a single pipeline step as completed for this file's attempt.
+
+        Resets the recorded step set when the file changed since the last
+        attempt (or there is none yet); otherwise adds ``step`` to it.
+        """
+        steps = self.completed_steps(rel_path, mtime, size)
+        steps.add(step)
+        self._conn.execute(
+            "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
+            "VALUES (?, ?, ?, 'partial', ?, '', ?) "
+            "ON CONFLICT(path) DO UPDATE SET "
+            "mtime=excluded.mtime, size=excluded.size, status='partial', "
+            "updated_at=excluded.updated_at, steps=excluded.steps",
+            (rel_path, mtime, size, time.time(), ",".join(sorted(steps))),
+        )
+        self._conn.commit()
 
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         """True when a ``done`` record exists for an unchanged file (mtime + size)."""
@@ -125,6 +159,12 @@ class NullState:
 
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         return False
+
+    def completed_steps(self, rel_path: str, mtime: float, size: int) -> set:
+        return set()
+
+    def mark_step(self, rel_path: str, step: str, mtime: float, size: int) -> None:
+        pass
 
     def mark(self, rel_path: str, status: str, mtime: float, size: int, detail: str = "") -> None:
         pass

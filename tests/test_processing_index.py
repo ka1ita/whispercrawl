@@ -19,6 +19,8 @@ from whispercrawl.config import (
     TranscriptionConfig,
 )
 from whispercrawl.main import run_cleanup, run_pipeline
+from whispercrawl.pipeline.postprocessor import PostProcessingError
+from whispercrawl.pipeline.summarizer import SummarizationError
 from whispercrawl.pipeline.transcriber import TranscriptionError
 
 
@@ -133,6 +135,136 @@ class TestCleanupClearsIndex:
 
         again = _run(_config(tmp_path))
         assert sorted(again) == ["a.mp3", "b.mp3"]
+
+
+class TestStepResume:
+    """EPIC-041: an interrupted file resumes from its last completed step."""
+
+    def test_resume_after_postprocess_failure_does_not_retranscribe(self, tmp_path: Path):
+        _make_files(tmp_path, ["a.mp3"])
+        cfg = _config(tmp_path)
+        cfg.postprocessing = OllamaStepConfig(
+            llm_enabled=True, regex_enabled=False, output_suffix="_fix",
+        )
+
+        transcribe_calls: list[str] = []
+        postprocess_calls: list[str] = []
+
+        def fake_transcribe(self, path: Path) -> str:
+            transcribe_calls.append(path.name)
+            return f"transcript for {path.name}"
+
+        def failing_postprocess(self, text: str, source_path: Path | None = None) -> str:
+            postprocess_calls.append(source_path.name)
+            raise PostProcessingError("simulated failure")
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch(
+                 "whispercrawl.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
+             ):
+            run_pipeline(cfg)
+
+        assert transcribe_calls == ["a.mp3"]
+        assert postprocess_calls == ["a.mp3"]
+        assert (tmp_path / "a.txt").exists()
+        assert not (tmp_path / "a_fix.txt").exists()
+
+        def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
+            postprocess_calls.append(source_path.name)
+            return f"fixed {text}"
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
+            run_pipeline(cfg)
+
+        assert transcribe_calls == ["a.mp3"]  # not called again — resumed from disk
+        assert postprocess_calls == ["a.mp3", "a.mp3"]
+        assert (tmp_path / "a_fix.txt").exists()
+
+    def test_resume_after_summarize_failure_does_not_repostprocess(self, tmp_path: Path):
+        _make_files(tmp_path, ["a.mp3"])
+        cfg = _config(tmp_path)
+        cfg.postprocessing = OllamaStepConfig(
+            llm_enabled=True, regex_enabled=False, output_suffix="_fix",
+        )
+        cfg.file_summarization = OllamaStepConfig(llm_enabled=True, output_suffix="_sum")
+
+        transcribe_calls: list[str] = []
+        postprocess_calls: list[str] = []
+        summarize_calls: list[str] = []
+
+        def fake_transcribe(self, path: Path) -> str:
+            transcribe_calls.append(path.name)
+            return f"transcript for {path.name}"
+
+        def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
+            postprocess_calls.append(source_path.name)
+            return f"fixed {text}"
+
+        def failing_summarize(self, text: str, file: str = "") -> str:
+            summarize_calls.append(file)
+            raise SummarizationError("simulated failure")
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
+             patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", failing_summarize):
+            run_pipeline(cfg)
+
+        assert transcribe_calls == ["a.mp3"]
+        assert postprocess_calls == ["a.mp3"]
+        assert summarize_calls == ["a.mp3"]
+        assert not (tmp_path / "a_sum.txt").exists()
+
+        def ok_summarize(self, text: str, file: str = "") -> str:
+            summarize_calls.append(file)
+            return f"summary of {file}"
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
+             patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", ok_summarize):
+            run_pipeline(cfg)
+
+        assert transcribe_calls == ["a.mp3"]      # not re-run
+        assert postprocess_calls == ["a.mp3"]     # not re-run
+        assert summarize_calls == ["a.mp3", "a.mp3"]
+        assert (tmp_path / "a_sum.txt").exists()
+
+    def test_source_file_change_between_attempts_discards_recorded_step(self, tmp_path: Path):
+        _make_files(tmp_path, ["a.mp3"])
+        cfg = _config(tmp_path)
+        cfg.postprocessing = OllamaStepConfig(
+            llm_enabled=True, regex_enabled=False, output_suffix="_fix",
+        )
+
+        transcribe_calls: list[str] = []
+
+        def fake_transcribe(self, path: Path) -> str:
+            transcribe_calls.append(path.name)
+            return f"transcript for {path.name}"
+
+        def failing_postprocess(self, text: str, source_path: Path | None = None) -> str:
+            raise PostProcessingError("simulated failure")
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch(
+                 "whispercrawl.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
+             ):
+            run_pipeline(cfg)
+        assert transcribe_calls == ["a.mp3"]
+
+        # source file changes between attempts — recorded "transcribe" step must be discarded
+        source = tmp_path / "a.mp3"
+        source.write_bytes(b"\x01\x02\x03")
+        os.utime(source, (time.time(), time.time()))
+
+        def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
+            return f"fixed {text}"
+
+        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
+            run_pipeline(cfg)
+
+        assert transcribe_calls == ["a.mp3", "a.mp3"]  # re-transcribed, not resumed
 
 
 class TestStateDisabled:

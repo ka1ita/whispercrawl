@@ -4,6 +4,21 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-041: Per-Step Resume in the Processing Index
+
+- [x] `state.py`: bump `SCHEMA_VERSION` to `"2"`; migrate `files` table with `ALTER TABLE files ADD COLUMN steps TEXT NOT NULL DEFAULT ''` guarded by a `PRAGMA table_info` check (no-op on already-migrated DB) (EPIC-041, 2026-09-01)
+- [x] `state.py`: `Record` gains `steps: str`; add `completed_steps(rel_path, mtime, size) -> set[str]` (empty unless stored row's mtime+size match) and `mark_step(rel_path, step, mtime, size) -> None` (resets step set on mtime/size mismatch, else unions; sets `status="partial"`) (EPIC-041, 2026-09-01)
+- [x] `state.py`: `NullState` gets matching no-op `completed_steps` (always `set()`) and `mark_step` (EPIC-041, 2026-09-01)
+- [x] `main.py` `_run_pipeline`: compute `resume_steps = state.completed_steps(rel, fst.st_mtime, fst.st_size)` per file when not rescanning; skip `transcriber.transcribe()` when `"transcribe"` already completed and `txt_path` exists (read transcript back from disk); skip `postprocessor.process()` when `"postprocess"` already completed (read `fixed_text` from `fix_path`, or from `txt_path` when `replace_transcription: true`); skip `file_summarizer.summarize_file()` when `"file_summarize"` already completed and `sum_path` exists (still append to `files_to_format`) (EPIC-041, 2026-09-01)
+- [x] `main.py`: call `state.mark_step(rel, <step>, fst.st_mtime, fst.st_size)` immediately after each step's output is successfully written (transcribe, postprocess, file_summarize) (EPIC-041, 2026-09-01)
+- [x] `file_walker.py`: fix the back-fill branch — only mark `status="done"` from output existence when `state.lookup(rel) is None` (no row at all); a file with an existing non-current row (`error`/`partial`/stale mtime) is always added to `candidates` regardless of output existence, so `main.py` can resume it (EPIC-041, 2026-09-01)
+- [x] `docs/architecture/overview.md`, `CLAUDE.md`: document per-step resume and that it fixes the prior false-"done" back-fill quirk (EPIC-041, 2026-09-01)
+- [x] Tests — `tests/test_state.py`: migration adds `steps` column without touching existing rows; `mark_step` accumulates across calls with unchanged mtime/size; `mark_step` resets on mtime/size mismatch; `completed_steps` empty for unknown path or mismatched mtime/size; `NullState` no-op/empty (EPIC-041, 2026-09-01)
+- [x] Tests — `tests/test_file_walker.py`: file with recorded `error` row + existing `.txt` output → still yielded as candidate (regression); file with no row + existing output → still back-filled `done` and skipped (EPIC-040 behavior preserved) (EPIC-041, 2026-09-01)
+- [x] Tests — pipeline integration: interrupt after transcription → rerun does not re-call transcriber, resumes postprocess+summarize, ends `done`; interrupt after postprocessing → transcriber and postprocessor not re-called, summarization resumes; source file mtime changes between attempts → all steps reprocessed from scratch (EPIC-041, 2026-09-01)
+
+---
+
 ## EPIC-040: Persisted Processing Index and Per-Run File Cap for Large Catalogs
 
 - [x] `state.py` (new): `ProcessingState` class over a single SQLite file (stdlib `sqlite3`, WAL); schema `files(path, mtime, size, status, updated_at, detail)` + `meta(key, value)`; `path` stored relative to `watch_dir`; `status` ∈ `done`|`error`|`partial` (EPIC-040, 2026-08-27)

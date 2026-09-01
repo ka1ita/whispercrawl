@@ -65,11 +65,18 @@ def iter_media_files(
             if state is not None and state.is_current(rel, mtime, size):
                 logger.debug("Skipping %s — recorded as processed in the index", path)
                 continue
-            stem = path.stem + transcription_suffix
-            if any(path.with_name(stem + e).exists() for e in _all_exts):
-                if state is not None:
-                    state.mark(rel, "done", mtime, size, detail="back-filled from output file")
-                continue
+            # Only back-fill "done" from output existence for files with no state
+            # row at all (a pre-existing catalog being indexed for the first time).
+            # A file with a recorded but non-current row (error/partial/stale) must
+            # still be queued so it can resume from its recorded pipeline steps —
+            # otherwise an earlier step's leftover output would silently erase the
+            # recorded error and the file would never be retried.
+            if state is None or state.lookup(rel) is None:
+                stem = path.stem + transcription_suffix
+                if any(path.with_name(stem + e).exists() for e in _all_exts):
+                    if state is not None:
+                        state.mark(rel, "done", mtime, size, detail="back-filled from output file")
+                    continue
         candidates.append((mtime, path))
 
     candidates.sort(key=lambda item: item[0], reverse=True)
