@@ -132,9 +132,24 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         logger.info("No output files found in %s", config.watch_dir)
 
 
-def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -> None:
-    """Execute the full pipeline for all matching files."""
+def run_pipeline(
+    config: Config, dry_run: bool = False, cleanup: bool = False, refresh: bool = False
+) -> None:
+    """Execute the full pipeline for all matching files.
+
+    ``refresh`` re-runs every step downstream of ASR (post-process, summarize,
+    per-directory concat/summary, format) from the transcript text stored in the
+    processing index — no whisper call. It requires the index and text storage
+    to be enabled.
+    """
     from whispercrawl.state import NullState, open_state
+
+    if refresh and not (config.state.enabled and config.state.store_text):
+        logger.error(
+            "--refresh needs state.enabled: true and state.store_text: true "
+            "(the raw transcript is read back from the index)."
+        )
+        return
 
     if dry_run:
         state = NullState()
@@ -145,12 +160,12 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
             config.state.enabled, config.state.path, config.watch_dir, watch_dir=config.watch_dir
         )
     try:
-        _run_pipeline(config, state, dry_run, cleanup)
+        _run_pipeline(config, state, dry_run, cleanup, refresh)
     finally:
         state.close()
 
 
-def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
+def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: bool = False) -> None:
     from whispercrawl.file_walker import iter_media_files
     from whispercrawl.pipeline.cleaner import Cleaner
     from whispercrawl.pipeline.formatter import Formatter
@@ -168,6 +183,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
         config.skip_marker,
         config.max_age_days,
         state,
+        ignore_processed=refresh,
     ))
 
     if config.max_files_per_run is not None and len(files) > config.max_files_per_run:
@@ -201,8 +217,15 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
         if fst is not None:
             state.mark(rel, status, fst.st_mtime, fst.st_size, detail)
 
+    _log_base = Path(config.logging.log_dir) if config.logging.log_dir else config.watch_dir / "logs"
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
-        transcriber = Transcriber(config.transcription, svc_log, config.logging.diarize_log)
+        transcriber = Transcriber(
+            config.transcription,
+            svc_log,
+            config.logging.diarize_log,
+            diarize_dir=_log_base / "diarize",
+            watch_dir=config.watch_dir,
+        )
         postprocessor = (
             PostProcessor(config.postprocessing, config.postprocessing.regex_patterns, svc_log)
             if config.postprocessing.llm_enabled or config.postprocessing.regex_enabled else None
@@ -232,13 +255,31 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
                 cleaner.clean_other_formats(file_path, _rescan_labels)
 
             resume_steps: set = set()
-            if not config.rescan and fst is not None:
+            if not config.rescan and not refresh and fst is not None:
                 resume_steps = state.completed_steps(rel, fst.st_mtime, fst.st_size)
 
             txt_path = output_path(file_path, config.transcription.output_suffix, "txt")
 
-            if "transcribe" in resume_steps and txt_path.exists():
-                transcript = txt_path.read_text(encoding="utf-8")
+            stored_asr = None
+            if fst is not None and (refresh or "transcribe" in resume_steps):
+                stored_asr = state.get_text(rel, "asr", fst.st_mtime, fst.st_size)
+
+            if refresh:
+                if stored_asr is None:
+                    logger.info(
+                        "Refresh: no stored ASR text for %s — run a normal pass first; skipping",
+                        file_path,
+                    )
+                    return {"ok": False}
+                transcript = stored_asr
+                txt_path.write_text(transcript, encoding="utf-8")
+                if fst is not None:
+                    state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size)
+                logger.info("Refreshing from stored ASR text: %s", file_path)
+            elif "transcribe" in resume_steps and (stored_asr is not None or txt_path.exists()):
+                transcript = stored_asr if stored_asr is not None else txt_path.read_text(encoding="utf-8")
+                if not txt_path.exists():
+                    txt_path.write_text(transcript, encoding="utf-8")
                 logger.info("Resuming: transcript already present: %s", txt_path)
             else:
                 try:
@@ -258,6 +299,8 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
                 logger.info("Transcript written: %s", txt_path)
                 if fst is not None:
                     state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size)
+                    if config.state.store_text:
+                        state.save_text(rel, "asr", transcript, fst.st_mtime, fst.st_size)
 
             # Track per-dir texts for concatenation step; entry is [transcript, fixed_text]
             dir_file_texts.setdefault(file_path.parent, {})[file_path.name] = [transcript, None]
@@ -280,11 +323,18 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
             rel, fst, resume_steps = ctx["rel"], ctx["fst"], ctx["resume_steps"]
             transcript, txt_path = ctx["transcript"], ctx["txt_path"]
             fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
+            stored_fixed = (
+                state.get_text(rel, "fixed", fst.st_mtime, fst.st_size)
+                if fst is not None and "postprocess" in resume_steps else None
+            )
             resumed_postprocess = "postprocess" in resume_steps and (
-                fix_path.exists() if not config.postprocessing.replace_transcription else True
+                stored_fixed is not None
+                or (fix_path.exists() if not config.postprocessing.replace_transcription else True)
             )
             if resumed_postprocess:
-                if config.postprocessing.replace_transcription:
+                if stored_fixed is not None:
+                    fixed_text = stored_fixed
+                elif config.postprocessing.replace_transcription:
                     fixed_text = transcript
                 else:
                     fixed_text = fix_path.read_text(encoding="utf-8")
@@ -307,6 +357,8 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
                     logger.info("Post-processed: %s", fix_path)
                 if fst is not None:
                     state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size)
+                    if config.state.store_text:
+                        state.save_text(rel, "fixed", fixed_text, fst.st_mtime, fst.st_size)
                 ctx["fixed_text"] = fixed_text
             except PostProcessingError as e:
                 logger.error("Post-processing failed for %s: %s", file_path, e)
@@ -425,6 +477,12 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Run once and exit")
     parser.add_argument("--dry-run", action="store_true", help="Log files that would be processed without processing them")
     parser.add_argument("--cleanup", action="store_true", help="Delete output files under watch_dir without running the pipeline")
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-run post-processing, summarization, and formatting from the transcript "
+        "text stored in the processing index — no whisper call. Needs state.enabled + state.store_text.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -432,6 +490,10 @@ def main() -> None:
 
     if args.cleanup and not args.once:
         run_cleanup(config, dry_run=args.dry_run)
+        return
+
+    if args.refresh:
+        run_pipeline(config, refresh=True, cleanup=args.cleanup)
         return
 
     if args.once or args.dry_run:

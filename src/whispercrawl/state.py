@@ -19,7 +19,7 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 STATE_DIRNAME = "db"
 LEGACY_STATE_DIRNAME = ".whispercrawl"  # pre-EPIC-043 location, under watch_dir
 STATE_FILENAME = "state.db"
@@ -35,13 +35,19 @@ CREATE TABLE IF NOT EXISTS files (
     status     TEXT NOT NULL,
     updated_at REAL NOT NULL,
     detail     TEXT NOT NULL DEFAULT '',
-    steps      TEXT NOT NULL DEFAULT ''
+    steps      TEXT NOT NULL DEFAULT '',
+    asr_text   TEXT,
+    fixed_text TEXT
 );
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
 """
+
+# Text payloads stored on the row so `--refresh` can re-run every step
+# downstream of ASR without another whisper call. See EPIC-046.
+_TEXT_COLUMNS = {"asr": "asr_text", "fixed": "fixed_text"}
 
 
 @dataclass(frozen=True)
@@ -53,6 +59,8 @@ class Record:
     updated_at: float
     detail: str
     steps: str = ""
+    asr_text: Optional[str] = None
+    fixed_text: Optional[str] = None
 
 
 class ProcessingState:
@@ -72,6 +80,10 @@ class ProcessingState:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
         if "steps" not in columns:
             conn.execute("ALTER TABLE files ADD COLUMN steps TEXT NOT NULL DEFAULT ''")
+        if "asr_text" not in columns:
+            conn.execute("ALTER TABLE files ADD COLUMN asr_text TEXT")
+        if "fixed_text" not in columns:
+            conn.execute("ALTER TABLE files ADD COLUMN fixed_text TEXT")
         conn.execute(
             "INSERT INTO meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (SCHEMA_VERSION,),
@@ -81,7 +93,8 @@ class ProcessingState:
 
     def lookup(self, rel_path: str) -> Optional[Record]:
         row = self._conn.execute(
-            "SELECT path, mtime, size, status, updated_at, detail, steps FROM files WHERE path = ?",
+            "SELECT path, mtime, size, status, updated_at, detail, steps, asr_text, fixed_text "
+            "FROM files WHERE path = ?",
             (rel_path,),
         ).fetchone()
         return Record(*row) if row else None
@@ -101,19 +114,59 @@ class ProcessingState:
         """Record a single pipeline step as completed for this file's attempt.
 
         Resets the recorded step set when the file changed since the last
-        attempt (or there is none yet); otherwise adds ``step`` to it.
+        attempt (or there is none yet); otherwise adds ``step`` to it. A
+        changed file also drops any stored ``asr_text`` / ``fixed_text`` — the
+        old generation's text must not be reused.
         """
-        steps = self.completed_steps(rel_path, mtime, size)
+        rec = self.lookup(rel_path)
+        changed = rec is not None and (
+            abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size
+        )
+        steps = set() if (rec is None or changed) else {s for s in rec.steps.split(",") if s}
         steps.add(step)
+        joined = ",".join(sorted(steps))
+        if changed:
+            self._conn.execute(
+                "UPDATE files SET mtime=?, size=?, status='partial', updated_at=?, "
+                "steps=?, asr_text=NULL, fixed_text=NULL WHERE path=?",
+                (mtime, size, time.time(), joined, rel_path),
+            )
+        else:
+            self._conn.execute(
+                "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
+                "VALUES (?, ?, ?, 'partial', ?, '', ?) "
+                "ON CONFLICT(path) DO UPDATE SET "
+                "mtime=excluded.mtime, size=excluded.size, status='partial', "
+                "updated_at=excluded.updated_at, steps=excluded.steps",
+                (rel_path, mtime, size, time.time(), joined),
+            )
+        self._conn.commit()
+
+    def save_text(self, rel_path: str, kind: str, text: str, mtime: float, size: int) -> None:
+        """Persist a step's text output (``kind`` is ``"asr"`` or ``"fixed"``).
+
+        Upserts the matching column against the file's current mtime/size row so
+        ``--refresh`` can read it back later. Leaves status/steps/detail alone.
+        """
+        col = _TEXT_COLUMNS[kind]
         self._conn.execute(
-            "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
-            "VALUES (?, ?, ?, 'partial', ?, '', ?) "
-            "ON CONFLICT(path) DO UPDATE SET "
-            "mtime=excluded.mtime, size=excluded.size, status='partial', "
-            "updated_at=excluded.updated_at, steps=excluded.steps",
-            (rel_path, mtime, size, time.time(), ",".join(sorted(steps))),
+            f"INSERT INTO files(path, mtime, size, status, updated_at, {col}) "
+            f"VALUES (?, ?, ?, 'partial', ?, ?) "
+            f"ON CONFLICT(path) DO UPDATE SET {col}=excluded.{col}, updated_at=excluded.updated_at",
+            (rel_path, mtime, size, time.time(), text),
         )
         self._conn.commit()
+
+    def get_text(self, rel_path: str, kind: str, mtime: float, size: int) -> Optional[str]:
+        """Return the stored text for an unchanged file, else ``None``.
+
+        ``None`` when there is no row, the row's mtime/size don't match, or the
+        column was never populated.
+        """
+        rec = self.lookup(rel_path)
+        if rec is None or abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size:
+            return None
+        return rec.asr_text if kind == "asr" else rec.fixed_text
 
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         """True when a ``done`` record exists for an unchanged file (mtime + size)."""
@@ -168,6 +221,12 @@ class NullState:
 
     def mark_step(self, rel_path: str, step: str, mtime: float, size: int) -> None:
         pass
+
+    def save_text(self, rel_path: str, kind: str, text: str, mtime: float, size: int) -> None:
+        pass
+
+    def get_text(self, rel_path: str, kind: str, mtime: float, size: int) -> Optional[str]:
+        return None
 
     def mark(self, rel_path: str, status: str, mtime: float, size: int, detail: str = "") -> None:
         pass

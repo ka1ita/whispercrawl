@@ -40,10 +40,16 @@ class Transcriber:
         config: TranscriptionConfig,
         service_logger: Optional[object] = None,
         diarize_log: bool = False,
+        diarize_dir: Optional[Path] = None,
+        watch_dir: Optional[Path] = None,
     ) -> None:
         self.config = config
         self._svc_log = service_logger
         self._diarize_log = diarize_log
+        # When set, raw diarization JSON is written under this directory mirroring
+        # the file's path relative to watch_dir, instead of beside the audio.
+        self._diarize_dir = Path(diarize_dir) if diarize_dir is not None else None
+        self._watch_dir = Path(watch_dir) if watch_dir is not None else None
 
     def transcribe(self, file_path: Path) -> str:
         """Call whisper API and return transcription text.
@@ -157,10 +163,30 @@ class Transcriber:
                 lines.append(f"[{speaker}]: {text}")
         return "\n".join(lines)
 
+    def _diarize_json_path(self, file_path: Path) -> Path:
+        """Where the raw diarization JSON goes.
+
+        With ``diarize_dir`` set: ``<diarize_dir>/<path relative to watch_dir>``
+        with the audio suffix replaced by ``.json`` (subdirectories preserved).
+        Otherwise the legacy sidecar beside the audio: ``<stem>_diarize.json``.
+        """
+        if self._diarize_dir is None:
+            return file_path.with_name(file_path.stem + "_diarize.json")
+        rel: Path
+        if self._watch_dir is not None:
+            try:
+                rel = file_path.resolve().relative_to(self._watch_dir.resolve())
+            except ValueError:
+                rel = Path(file_path.name)
+        else:
+            rel = Path(file_path.name)
+        return self._diarize_dir / rel.with_suffix(".json")
+
     def _save_diarize_json(self, file_path: Path, json_body: str) -> None:
-        """Save JSON diarization response body to sidecar file (best-effort)."""
-        out = file_path.with_name(file_path.stem + "_diarize.json")
+        """Save JSON diarization response body to a file (best-effort)."""
+        out = self._diarize_json_path(file_path)
         try:
+            out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(json_body, encoding="utf-8")
             logger.info("Diarize log written: %s", out)
         except Exception as exc:

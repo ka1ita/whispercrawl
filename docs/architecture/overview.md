@@ -40,6 +40,8 @@ An index left at the pre-EPIC-043 location (`<watch_dir>/.whispercrawl/state.db`
 
 **Per-step resume.** Alongside the overall `done`/`error`/`partial` status, each file's row also tracks which individual pipeline step last completed (`transcribe`, `postprocess`, `file_summarize`) for its current `mtime`/`size`. If a run is interrupted mid-file — a crash, a `max_files_per_run` cutoff, `Ctrl-C` — the next run reads the already-written output of each completed step back from disk instead of re-calling the ASR/LLM services, and only resumes the steps that didn't finish. A row whose `mtime`/`size` no longer match the file on disk (it changed since the last attempt) discards its recorded steps and reprocesses from scratch. A file with a recorded `error`/`partial` row is always re-queued for another attempt, even if an earlier step's output already exists on disk — it is never silently treated as fully `done` just because one output file happens to be present.
 
+**Stored transcript text and `--refresh`.** When `state.store_text` is true (the default), each file's row also holds its raw ASR transcript (`asr_text`) and post-processed text (`fixed_text`), keyed to the same `mtime`/`size`. This keeps the one slow, non-deterministic output — the ASR result — even after the on-disk `.txt` is post-processed over or converted to `.md`/`.html`, and it powers `whispercrawl --refresh`: a single pass that re-runs every step *downstream* of ASR (post-process → per-file summary → per-directory concat/summary → format) from the stored transcript, with the current config and **zero** whisper calls. It is the fast path for iterating on the fix prompt, the summary model, or the output format. `--refresh` visits every media file that passes the `skip_marker` / `max_age_days` / `max_files_per_run` traversal filters (the index skip is bypassed) and honors `processing_mode`; a file with no stored transcript is logged and skipped with no `_err.txt`. After a successful `--refresh` the file's steps are re-marked complete, so a later normal run skips it. A changed `mtime`/`size` invalidates the stored text (`mark_step`'s reset nulls both columns) — a normal run re-transcribes, `--refresh` skips. `--refresh` requires `state.enabled: true` and `state.store_text: true`; changing `transcription` settings (`diarize`, `language`, `speaker_timestamps`, …) still needs a real re-transcribe via `rescan: true`.
+
 ### Processing mode (`processing_mode`)
 
 Controls the order the per-file pipeline steps run in across a batch:
@@ -76,8 +78,8 @@ Key sub-configs:
 | `FormatterConfig` | Output format (`txt`/`html`/`md`), `enabled` flag, speaker label style |
 | `CleanupConfig` | Which output suffixes `--cleanup` removes |
 | `ScheduleConfig` | Cron or interval schedule |
-| `StateConfig` | Persisted processing-index toggle and path |
-| `LoggingConfig` | App log file, request logging, diarization JSON sidecar |
+| `StateConfig` | Persisted processing-index toggle, path, and `store_text` (raw + fixed transcript in the index for `--refresh`) |
+| `LoggingConfig` | App log file, request logging, diarization JSON dump (`<log_dir>/diarize/`) |
 
 ### `scheduler.py`
 
@@ -86,6 +88,8 @@ Wraps the main pipeline run in a cron-style schedule (APScheduler). Also support
 ### `main.py`
 
 CLI entry point. Parses args, loads config, starts scheduler or runs once. Houses `output_path()` (path construction for cleanup) and `run_cleanup()`.
+
+CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be processed), `--cleanup` (delete outputs, optionally combined with `--once`), `--refresh` (single downstream-only pass from stored transcript text — see `state.py` above). Branch order in `main()`: `--cleanup` → `--refresh` → `--once`/`--dry-run` → scheduler.
 
 ## File Output Conventions
 

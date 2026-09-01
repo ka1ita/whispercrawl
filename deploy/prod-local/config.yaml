@@ -30,8 +30,12 @@ processing_mode: per_file
 
 # Persisted index of processed files — avoids re-checking the whole tree every run.
 # Deleting the file is safe: the next run re-derives it from existing output files (no reprocessing).
+# The index also stores each file's raw ASR transcript and post-processed text; this powers
+#   whispercrawl --refresh  — re-run post-processing, summarization, and formatting from the
+#   stored transcript with the current config and no whisper call (needs enabled: true + store_text: true).
 state:
   enabled: true
+  # store_text: true                       # keep raw + fixed transcript text in the index (enables --refresh)
   # path: /db/state.db                    # default: <config dir>/db/state.db
   # (a legacy /audio/.whispercrawl/state.db is moved here automatically on first run)
 
@@ -151,7 +155,7 @@ logging:
   app_log_max_bytes: 10485760
   app_log_backup_count: 5
   requests: true
-  diarize_log: false
+  diarize_log: false               # Save raw JSON diarization response under <log_dir>/diarize/<relative-path>.json
   log_dir: ${LOGS_DIR:./logs}/
   max_text_length: 500
 

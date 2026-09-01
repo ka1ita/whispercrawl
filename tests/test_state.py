@@ -131,6 +131,83 @@ class TestStepResume:
         assert rec.status == "done"
         assert set(rec.steps.split(",")) == {"transcribe", "postprocess"}
 
+    def test_migration_adds_text_columns_to_v2_db(self, tmp_path: Path):
+        db = tmp_path / "old.db"
+        conn = sqlite3.connect(str(db))
+        conn.executescript(
+            """
+            CREATE TABLE files (
+                path       TEXT PRIMARY KEY,
+                mtime      REAL NOT NULL,
+                size       INTEGER NOT NULL,
+                status     TEXT NOT NULL,
+                updated_at REAL NOT NULL,
+                detail     TEXT NOT NULL DEFAULT '',
+                steps      TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            """
+        )
+        conn.execute(
+            "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
+            "VALUES ('old.mp3', 1.0, 10, 'done', 1.0, '', 'transcribe')"
+        )
+        conn.execute("INSERT INTO meta(key, value) VALUES ('schema_version', '2')")
+        conn.commit()
+        conn.close()
+
+        with ProcessingState.open(db) as st:
+            rec = st.lookup("old.mp3")
+            assert rec.status == "done"
+            assert rec.steps == "transcribe"
+            assert rec.asr_text is None
+            assert rec.fixed_text is None
+            assert st.get_text("old.mp3", "asr", 1.0, 10) is None
+
+
+class TestTextStorage:
+    def test_save_then_get_roundtrip(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.save_text("x.mp3", "asr", "raw transcript", 1.0, 10)
+            st.save_text("x.mp3", "fixed", "fixed transcript", 1.0, 10)
+            assert st.get_text("x.mp3", "asr", 1.0, 10) == "raw transcript"
+            assert st.get_text("x.mp3", "fixed", 1.0, 10) == "fixed transcript"
+
+    def test_get_text_none_for_unknown_path(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            assert st.get_text("nope.mp3", "asr", 1.0, 1) is None
+
+    def test_get_text_none_on_mtime_or_size_mismatch(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.save_text("x.mp3", "asr", "t", 1.0, 10)
+            assert st.get_text("x.mp3", "asr", 2.0, 10) is None
+            assert st.get_text("x.mp3", "asr", 1.0, 11) is None
+
+    def test_mark_step_reset_nulls_stored_text(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            st.save_text("x.mp3", "asr", "old gen text", 1.0, 10)
+            st.mark_step("x.mp3", "transcribe", 2.0, 10)  # file changed
+            assert st.get_text("x.mp3", "asr", 2.0, 10) is None
+
+    def test_mark_step_same_generation_keeps_text(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10)
+            st.save_text("x.mp3", "asr", "kept", 1.0, 10)
+            st.mark_step("x.mp3", "postprocess", 1.0, 10)
+            assert st.get_text("x.mp3", "asr", 1.0, 10) == "kept"
+
+    def test_final_mark_done_keeps_text_readable(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 5.0, 5)
+            st.save_text("x.mp3", "asr", "body", 5.0, 5)
+            st.mark("x.mp3", "done", 5.0, 5)
+            assert st.get_text("x.mp3", "asr", 5.0, 5) == "body"
+
+    def test_nullstate_get_text_none(self):
+        assert NullState().get_text("x", "asr", 1.0, 1) is None
+        NullState().save_text("x", "asr", "t", 1.0, 1)  # no-op, no error
+
     def test_migration_adds_steps_column_to_v1_db(self, tmp_path: Path):
         db = tmp_path / "old.db"
         conn = sqlite3.connect(str(db))

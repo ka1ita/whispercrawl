@@ -316,3 +316,38 @@ class TestIterMediaFilesWithState:
 
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True))
         assert [f.name for f in files] == ["rec.mp3"]
+
+
+class TestIgnoreProcessed:
+    """EPIC-046: `--refresh` traversal yields every media file regardless of index/outputs."""
+
+    def test_yields_done_and_output_bearing_files(self, tmp_path: Path):
+        a, b = tmp_path / "a.mp3", tmp_path / "b.mp3"
+        a.touch()
+        b.touch()
+        (tmp_path / "a.txt").write_text("already transcribed")
+        st = ProcessingState.open(tmp_path / "state.db")
+        st.mark("b.mp3", "done", b.stat().st_mtime, b.stat().st_size)
+
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=False, state=st, ignore_processed=True,
+        ))
+        assert sorted(f.name for f in files) == ["a.mp3", "b.mp3"]
+
+    def test_still_applies_skip_marker_and_age(self, tmp_path: Path):
+        import os
+        import time
+
+        keep = tmp_path / "keep.mp3"
+        keep.touch()
+        skip = tmp_path / "draft_skip.mp3"
+        skip.touch()
+        old = tmp_path / "old.mp3"
+        old.touch()
+        os.utime(old, (time.time() - 40 * 86400, time.time() - 40 * 86400))
+
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=False,
+            skip_marker="_skip", max_age_days=10, ignore_processed=True,
+        ))
+        assert [f.name for f in files] == ["keep.mp3"]

@@ -1,6 +1,7 @@
 """Configuration loading and validation."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -8,6 +9,8 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 
 def _expand_env(text: str) -> str:
@@ -83,9 +86,22 @@ class FormatterConfig:
 
 
 @dataclass
+class ResultConfig:
+    """How the single per-file / per-directory result document is assembled (EPIC-047)."""
+    file_sections: List[str] = field(default_factory=lambda: ["summary", "transcript"])
+    dir_sections: List[str] = field(default_factory=lambda: ["summary", "transcript"])
+    summary_heading: str = "Резюме"
+    transcript_heading: str = "Транскрипция"
+    heading_level: int = 1              # number of leading '#' on section headings
+    separator: str = "\n\n"            # between rendered sections
+    include_missing_headings: bool = False  # emit a section's heading even when it produced nothing
+
+
+@dataclass
 class StateConfig:
     enabled: bool = True             # persisted index of processed files
     path: Optional[str] = None       # default: <config dir>/db/state.db
+    store_text: bool = True          # keep raw + post-processed transcript text in the index (powers --refresh)
 
 
 @dataclass

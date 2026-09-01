@@ -323,6 +323,63 @@ class TestDiarizeLog:
         assert "disk full" in caplog.text
 
 
+# ── diarize_log relocation to the log dir (EPIC-046) ─────────────────────────
+
+class TestDiarizeLogRelocation:
+    def test_written_under_log_dir_mirroring_relative_path(self, tmp_path):
+        watch = tmp_path / "audio"
+        audio = watch / "2026-02" / "rec.ogg"
+        audio.parent.mkdir(parents=True)
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "hi"}])
+        diarize_dir = tmp_path / "logs" / "diarize"
+
+        with patch("httpx.post", return_value=_response(body)):
+            Transcriber(
+                _config(diarize=True),
+                diarize_log=True,
+                diarize_dir=diarize_dir,
+                watch_dir=watch,
+            ).transcribe(audio)
+
+        out = diarize_dir / "2026-02" / "rec.json"
+        assert out.read_text(encoding="utf-8") == body
+        assert not (audio.parent / "rec_diarize.json").exists()
+
+    def test_falls_back_to_filename_when_outside_watch_dir(self, tmp_path):
+        audio = tmp_path / "loose.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "hi"}])
+        diarize_dir = tmp_path / "logs" / "diarize"
+
+        with patch("httpx.post", return_value=_response(body)):
+            Transcriber(
+                _config(diarize=True),
+                diarize_log=True,
+                diarize_dir=diarize_dir,
+                watch_dir=tmp_path / "elsewhere",
+            ).transcribe(audio)
+
+        assert (diarize_dir / "loose.json").read_text(encoding="utf-8") == body
+
+    def test_no_file_when_flag_off(self, tmp_path):
+        watch = tmp_path / "audio"
+        audio = watch / "rec.ogg"
+        audio.parent.mkdir(parents=True)
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "hi"}])
+        diarize_dir = tmp_path / "logs" / "diarize"
+
+        with patch("httpx.post", return_value=_response(body)):
+            Transcriber(
+                _config(diarize=True),
+                diarize_dir=diarize_dir,
+                watch_dir=watch,
+            ).transcribe(audio)
+
+        assert not diarize_dir.exists()
+
+
 # ── speaker_timestamps ────────────────────────────────────────────────────────
 
 class TestSpeakerTimestamps:

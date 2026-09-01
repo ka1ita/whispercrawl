@@ -178,12 +178,26 @@ tail -f logs/service_requests.ndjson
 already handled without re-scanning the whole tree, and lets an interrupted run resume where
 it left off. `setup.sh` creates and `chown`s the `db/` directory.
 
-- **Safe to delete.** The next run rebuilds it from whichever output files exist — nothing is reprocessed.
+- **Safe to delete.** The next run rebuilds it from whichever output files exist — nothing is reprocessed
+  (but stored transcript text is lost, so `--refresh` will re-transcribe any deleted file on the next normal run).
 - **Backups:** either include `db/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
 - **Upgrading from an older release:** an existing `audio/.whispercrawl/state.db` is moved into
   `db/` automatically on the first run (best-effort; a failure just starts a fresh index).
 - Disable with `state.enabled: false` in `config.yaml`. Set `max_files_per_run` to cap how many
   files each run processes when first draining a large backlog.
+- **Stored transcript text.** With `state.store_text: true` (default) the index also keeps each
+  file's raw ASR transcript and post-processed text, enabling:
+
+  ```bash
+  docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --refresh
+  ```
+
+  `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
+  file from the stored transcript, with the current `config.yaml`, and **without a single whisper
+  call** — the fast way to apply a new fix prompt, summary model, or output format. A file whose
+  source changed, or that has no stored transcript, is skipped (no `_err.txt`). Needs
+  `state.enabled: true` and `state.store_text: true`; changing `transcription:` settings still
+  requires `rescan: true`.
 
 ---
 

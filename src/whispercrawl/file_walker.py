@@ -31,6 +31,7 @@ def iter_media_files(
     skip_marker: str = "",
     max_age_days: Optional[int] = None,
     state: Optional[State] = None,
+    ignore_processed: bool = False,
 ) -> Generator[Path, None, None]:
     """Yield media files under root that need processing, newest first.
 
@@ -39,6 +40,10 @@ def iter_media_files(
     filesystem for output files. A file that is not in the index but already
     has an output file is recorded as ``done`` and skipped — back-filling the
     index for a pre-existing catalog with no reprocessing.
+
+    ``ignore_processed`` (used by ``--refresh``) yields every media file that
+    survives the ``skip_marker`` / ``max_age_days`` filters regardless of index
+    state or existing outputs — the index skip and back-fill are bypassed.
     """
     _all_exts = (".txt", ".md", ".html")
     _marker = skip_marker.lower() if skip_marker else ""
@@ -60,7 +65,7 @@ def iter_media_files(
         if _cutoff is not None and mtime < _cutoff:
             logger.debug("Skipping %s — older than max_age_days=%s", path, max_age_days)
             continue
-        if not rescan:
+        if not rescan and not ignore_processed:
             rel = str(path.relative_to(root))
             if state is not None and state.is_current(rel, mtime, size):
                 logger.debug("Skipping %s — recorded as processed in the index", path)

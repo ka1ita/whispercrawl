@@ -4,6 +4,50 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-047: One Consolidated Result File Per Audio File and Per Directory
+
+_Depends on EPIC-046 (text stored in the index)._
+
+- [ ] `config.py`: add `ResultConfig` (`file_sections`, `dir_sections`, `summary_heading`, `transcript_heading`, `heading_level`, `separator`, `include_missing_headings`); add `result: ResultConfig` to `Config`; validate section names against `{"summary","transcript"}` in `load_config` (EPIC-047)
+- [ ] `pipeline/composer.py` (new): `compose(sections, cfg) -> str` — join `(heading, body)` blocks as markdown `# heading` + body, `cfg.separator` between, skip empty bodies / missing headings per config (EPIC-047)
+- [ ] `pipeline/formatter.py`: recognise `^#{1,6}\s+` headings and `^---+$` rules — `html` → `<h1..6>` / `<hr>`, `md`/`txt` passthrough; never fall back to `<pre>` when any section is present; speaker styling still applies to transcript lines (EPIC-047)
+- [ ] `main.py` per-file: drop the `_fix` and `_sum` sidecars; build the result via `composer.compose([("summary", summary), ("transcript", body)], ...)` → write `<file>.txt` → `formatter.format_file`; `body` = fixed text if postprocessing ran else raw transcript (EPIC-047)
+- [ ] `main.py`: retire `postprocessing.replace_transcription` — parse it as a deprecated no-op with a WARNING (EPIC-047)
+- [ ] `main.py` per-dir: replace `_<dirname>_all` + `_<dirname>_sum` with one `_<dirname>.<ext>` = `composer.compose([("summary", dir_summary), ("transcript", concat)], sections=cfg.dir_sections)`; retire `dir_summarization.concat_suffix` / `output_suffix` as deprecated no-ops (EPIC-047)
+- [ ] `main.py` per-step resume: `file_summarize` resume path sources the summary from the index (add `"summary"` kind to EPIC-046 `get_text`) or recomputes — decide in impl (EPIC-047)
+- [ ] `pipeline/cleaner.py` / `run_cleanup`: add legacy labels (`_fix`, `_sum`, `_all`, `_concat`) to default `CleanupConfig.targets` + `clean_other_formats`; `run_cleanup` also removes `<file>_diarize.json` under the audio tree (EPIC-047)
+- [ ] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `result:` section (RU headings) with comments; remove/deprecate `replace_transcription`, `file_summarization.output_suffix`, `dir_summarization.concat_suffix` / `output_suffix`; add legacy labels to `cleanup.targets`; update pipeline comments (EPIC-047)
+- [ ] Docs — `CLAUDE.md` (Processing Pipeline + Key Conventions), `docs/architecture/overview.md` (redraw output boxes, document composer + `ResultConfig`), new ADR for consolidating outputs and dropping `replace_transcription` (EPIC-047)
+- [ ] Tests — `tests/test_composer.py` (new): section ordering; empty section omitted; `include_missing_headings`; custom headings / separator / level (EPIC-047)
+- [ ] Tests — `tests/test_formatter.py`: `# Heading` → `<h1>` (html) / passthrough (md/txt); `---` → `<hr>`; composed doc (summary prose + speaker transcript) → headings + `<p>` + styled speaker lines, never `<pre>` (EPIC-047)
+- [ ] Tests — pipeline: successful file run leaves only `<file>.<ext>` = summary + transcript in order; `llm_enabled: false` variants; dir run leaves only `_<dirname>.<ext>` = summary + concat; `--cleanup` sweeps legacy files; `replace_transcription: true` → WARNING + unchanged output; `--refresh` regenerates composed results (EPIC-047)
+- [ ] Tests — `tests/test_config.py`: `ResultConfig` defaults; invalid section name → `ValueError`; deprecated fields parse without error (EPIC-047)
+
+---
+
+## EPIC-046: Store ASR / Post-Processed Text in the Processing Index; Reprocess With `--refresh`
+
+- [x] `state.py`: bump `SCHEMA_VERSION` to `"3"`; guarded migration adds nullable `asr_text` / `fixed_text` columns to `files` (EPIC-046, 2026-09-01)
+- [x] `state.py`: `Record` gains `asr_text` / `fixed_text`; add `save_text(rel, kind, text, mtime, size)` and `get_text(rel, kind, mtime, size)` (`kind` ∈ `asr`/`fixed`; `get_text` returns `None` on mtime/size mismatch); `mark_step` reset also nulls the text columns; `NullState` no-ops (EPIC-046, 2026-09-01)
+- [x] `config.py`: optional `StateConfig.store_text: bool = True` escape hatch (EPIC-046, 2026-09-01)
+- [x] `main.py` `_transcribe_one`: after a successful transcribe call `state.save_text(rel, "asr", transcript, mtime, size)`; `"transcribe" in resume_steps` reads `state.get_text(rel, "asr", …)` first, then `txt_path`, then real transcribe (EPIC-046, 2026-09-01)
+- [x] `main.py` `_postprocess_one`: after success call `state.save_text(rel, "fixed", fixed_text, …)`; `"postprocess" in resume_steps` reads `state.get_text(rel, "fixed", …)` before `fix_path` / `txt_path` (EPIC-046, 2026-09-01)
+- [x] `file_walker.py`: add `ignore_processed: bool = False` to `iter_media_files` — yield every media file regardless of index/outputs, still applying `skip_marker` / `max_age_days` / newest-first (EPIC-046, 2026-09-01)
+- [x] `main.py`: add `--refresh` argparse flag; single pass, never starts the scheduler; branch order `--cleanup` → `--refresh` → `--once`/`--dry-run` → scheduler (EPIC-046, 2026-09-01)
+- [x] `main.py` refresh path: discover via ignore-processed traversal; per file `transcript = state.get_text(rel, "asr", mtime, size)` — `None` → INFO skip, no `_err.txt`; build ctx with `resume_steps = set()`; reuse `_postprocess_one` / `_summarize_one` / `_finalize_one` + dir loop unchanged; honor `processing_mode` (EPIC-046, 2026-09-01)
+- [x] `main.py` refresh success: `state.mark_step` for `transcribe` + `postprocess` + `file_summarize` (plus `_finalize_one` `done`) so a later normal run skips the file (EPIC-046, 2026-09-01)
+- [x] `pipeline/transcriber.py`: when `diarize_log: true` write raw JSON under `<log_dir>/diarize/<relative-path>.json`, not beside the audio (EPIC-046, 2026-09-01)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: note in the `state:` comment that the index stores raw + fixed text for `--refresh`; document `--refresh` (requires `state.enabled: true`) (EPIC-046, 2026-09-01)
+- [x] Docs — `CLAUDE.md` Key Conventions, `docs/architecture/overview.md`, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md`: index holds ASR/fixed text; `--refresh` re-runs downstream steps with no whisper call (EPIC-046, 2026-09-01)
+- [x] Tests — `tests/test_state.py`: v2→v3 migration adds columns without touching rows; `save_text`/`get_text` round-trip; `get_text` `None` on mismatch/absent; `mark_step` reset nulls text; `NullState` no-ops (EPIC-046, 2026-09-01)
+- [x] Tests — pipeline: normal run populates the text columns; `--refresh` on a `done` file does not call the transcriber and regenerates downstream outputs; `speaker_style` change + `--refresh` → new emphasis in `.md`; missing stored text → skipped, no `_err.txt`; post-`--refresh` normal run yields nothing; `per_step` vs `per_file` refresh identical; changed source between runs → refresh skips (EPIC-046, 2026-09-01)
+- [x] Tests — `tests/test_file_walker.py`: `ignore_processed=True` yields every media file regardless of index/outputs, still applies `skip_marker` / `max_age_days` / newest-first (EPIC-046, 2026-09-01)
+- [x] Tests — `tests/test_transcriber.py`: `_diarize.json` written under the configured log dir mirroring the relative path (EPIC-046, 2026-09-01)
+
+<!-- all tasks complete -->
+
+---
+
 ## EPIC-045: Formatter `speaker_style` Ignored When Speaker Timestamps Are On
 
 - [x] `formatter.py`: broaden `_SPEAKER_RE` to `^\[(SPEAKER_[^\]]*?)\](:?)\s*(.*)$` — matches `[SPEAKER_00]:`, `[SPEAKER_00 00:00:01]`, and `[SPEAKER_00]` forms; anchored to `SPEAKER_`; captures the optional trailing colon (EPIC-045, 2026-09-01)
