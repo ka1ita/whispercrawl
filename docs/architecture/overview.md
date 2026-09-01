@@ -105,12 +105,14 @@ CLI entry point. Parses args, loads config, starts scheduler or runs once. House
 
 ### Speaker label rendering (`html` and `md` only)
 
-When diarized transcription produces `[SPEAKER_XX]: text` lines, the Formatter applies visual styling controlled by two config fields under `formatter:`:
+When diarized transcription produces speaker lines, the Formatter applies visual styling controlled by two config fields under `formatter:`:
 
-- `speaker_style: bold | italic | plain` — emphasis on the `[SPEAKER_XX]:` label (default `bold`)
+- `speaker_style: bold | italic | plain` — emphasis on the speaker label (default `bold`)
 - `text_placement: same_line | new_line` — whether transcript text follows the label on the same line or starts on the next line (default `same_line`)
 
-Non-diarized files (no `[SPEAKER_XX]:` lines) are converted without modification to their content.
+All three label shapes the transcriber emits are recognised: `[SPEAKER_XX]: text` (`speaker_timestamps` off), `[SPEAKER_XX HH:MM:SS] text`, and `[SPEAKER_XX] text` (`speaker_timestamps` on). The trailing colon is reproduced only when the source line had one — the timestamped form renders as `**[SPEAKER_XX HH:MM:SS]**` with no colon.
+
+Non-diarized files (no `[SPEAKER_XX …]` lines) are converted without modification to their content.
 
 ## Error Handling Strategy
 

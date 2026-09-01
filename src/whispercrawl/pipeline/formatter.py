@@ -5,7 +5,13 @@ import re
 from html import escape
 from pathlib import Path
 
-_SPEAKER_RE = re.compile(r'^\[([^\]]+)\]:\s*(.*)')
+# Matches whispercrawl's speaker lines in all three shapes the transcriber emits:
+#   [SPEAKER_00]: text           (speaker_timestamps off)
+#   [SPEAKER_00 00:00:01] text   (speaker_timestamps on, with a start time)
+#   [SPEAKER_00] text            (speaker_timestamps on, no start time)
+# Group 1: label (may include the bracket-internal timestamp). Group 2: the
+# trailing colon if present (reproduced, never injected). Group 3: the text.
+_SPEAKER_RE = re.compile(r'^\[(SPEAKER_[^\]]*?)\](:?)\s*(.*)$')
 
 
 class Formatter:
@@ -19,24 +25,24 @@ class Formatter:
         self._speaker_style = speaker_style
         self._text_placement = text_placement
 
-    def _md_speaker_line(self, label: str, text: str) -> str:
+    def _md_speaker_line(self, label: str, colon: str, text: str) -> str:
         if self._speaker_style == "italic":
-            styled = f"*[{label}]:*"
+            styled = f"*[{label}]{colon}*"
         elif self._speaker_style == "plain":
-            styled = f"[{label}]:"
+            styled = f"[{label}]{colon}"
         else:
-            styled = f"**[{label}]:**"
+            styled = f"**[{label}]{colon}**"
         return f"{styled}\n{text}" if self._text_placement == "new_line" else f"{styled} {text}"
 
-    def _html_speaker_line(self, label: str, text: str) -> str:
+    def _html_speaker_line(self, label: str, colon: str, text: str) -> str:
         escaped_label = escape(label)
         escaped_text = escape(text)
         if self._speaker_style == "italic":
-            styled = f"<em>[{escaped_label}]:</em>"
+            styled = f"<em>[{escaped_label}]{colon}</em>"
         elif self._speaker_style == "plain":
-            styled = f"[{escaped_label}]:"
+            styled = f"[{escaped_label}]{colon}"
         else:
-            styled = f"<strong>[{escaped_label}]:</strong>"
+            styled = f"<strong>[{escaped_label}]{colon}</strong>"
         separator = "<br>" if self._text_placement == "new_line" else " "
         return f"<p>{styled}{separator}{escaped_text}</p>"
 
@@ -44,7 +50,7 @@ class Formatter:
         result = []
         for line in text.splitlines():
             m = _SPEAKER_RE.match(line)
-            result.append(self._md_speaker_line(m.group(1), m.group(2)) if m else line)
+            result.append(self._md_speaker_line(m.group(1), m.group(2), m.group(3)) if m else line)
         rendered = "\n".join(result)
         return rendered + "\n" if text.endswith("\n") else rendered
 
@@ -58,7 +64,7 @@ class Formatter:
             for line in lines:
                 m = _SPEAKER_RE.match(line)
                 if m:
-                    parts.append(self._html_speaker_line(m.group(1), m.group(2)))
+                    parts.append(self._html_speaker_line(m.group(1), m.group(2), m.group(3)))
                 elif line.strip():
                     parts.append(f"<p>{escape(line)}</p>")
             body = "\n".join(parts)

@@ -256,3 +256,78 @@ class TestFormatterHtmlSpeakerStyle:
         content = (tmp_path / "rec.html").read_text(encoding="utf-8")
         assert content.count("<p>") == 2
         assert content.count("</p>") == 2
+
+
+_TIMESTAMPED = "[SPEAKER_00 00:00:01] Hello world\n[SPEAKER_01 00:00:18] How are you"
+
+
+class TestFormatterSpeakerStyleWithTimestamps:
+    """EPIC-045: speaker_style must also style the timestamped label form."""
+
+    def test_html_bold_timestamped_label(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00 00:00:01]</strong> Hello world" in content
+        assert "<strong>[SPEAKER_01 00:00:18]</strong> How are you" in content
+        assert "<pre>" not in content
+
+    def test_html_italic_timestamped_label(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("html", speaker_style="italic", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<em>[SPEAKER_00 00:00:01]</em> Hello world" in content
+
+    def test_html_plain_timestamped_label(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("html", speaker_style="plain", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<p>[SPEAKER_00 00:00:01] Hello world</p>" in content
+        assert "<strong>" not in content and "<em>" not in content
+
+    def test_html_new_line_timestamped_label(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00 00:00:01]</strong><br>Hello world" in content
+
+    def test_md_bold_timestamped_label_no_injected_colon(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "**[SPEAKER_00 00:00:01]** Hello world" in content
+        assert "]:" not in content
+
+    def test_md_new_line_timestamped_label(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_TIMESTAMPED, encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="new_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "**[SPEAKER_00 00:00:01]**\nHello world" in content
+
+    def test_no_colon_no_timestamp_form_styled(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text("[SPEAKER_00] Hello world", encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00]</strong> Hello world" in content
+
+    def test_colon_form_output_unchanged(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text(_DIARIZED, encoding="utf-8")
+        Formatter("html", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.html").read_text(encoding="utf-8")
+        assert "<strong>[SPEAKER_00]:</strong> Hello world" in content
+
+    def test_non_speaker_bracket_line_not_treated_as_speaker(self, tmp_path):
+        p = tmp_path / "rec.txt"
+        p.write_text("[music]\n[SPEAKER_00 00:00:01] Hello", encoding="utf-8")
+        Formatter("md", speaker_style="bold", text_placement="same_line").format_file(p)
+        content = (tmp_path / "rec.md").read_text(encoding="utf-8")
+        assert "[music]" in content
+        assert "**[music]" not in content

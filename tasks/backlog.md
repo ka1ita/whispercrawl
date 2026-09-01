@@ -4,6 +4,16 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-045: Formatter `speaker_style` Ignored When Speaker Timestamps Are On
+
+- [x] `formatter.py`: broaden `_SPEAKER_RE` to `^\[(SPEAKER_[^\]]*?)\](:?)\s*(.*)$` — matches `[SPEAKER_00]:`, `[SPEAKER_00 00:00:01]`, and `[SPEAKER_00]` forms; anchored to `SPEAKER_`; captures the optional trailing colon (EPIC-045, 2026-09-01)
+- [x] `formatter.py`: `_md_speaker_line` / `_html_speaker_line` take the captured colon and render the styled token as `[{label}]{colon}` — keep the colon only when the source had one (colon-form output unchanged; timestamp form → `**[SPEAKER_00 00:00:01]**`) (EPIC-045, 2026-09-01)
+- [x] `formatter.py`: update `_render_md`, `_render_html` speaker branch, and the `has_speakers` check for the new capture-group indices (EPIC-045, 2026-09-01)
+- [x] Tests — `tests/test_formatter.py`: timestamped label form styled (bold/italic/plain) in html + md; `text_placement: new_line` with timestamps (br / newline); `[SPEAKER_00]` no-colon form styled; colon-form assertions still pass; a `[music]`-style line not treated as a speaker line; trailing-newline + txt no-op regressions (EPIC-045, 2026-09-01)
+- [x] `docs/architecture/overview.md`: note `speaker_style` covers the timestamped `[SPEAKER_XX HH:MM:SS]` label form (EPIC-045, 2026-09-01)
+
+---
+
 ## EPIC-044: Strip the Speaker Prefix the Whisper Service Embeds in Segment Text
 
 - [x] `transcriber.py`: add `import re`, module-level `_EMBEDDED_SPEAKER_RE` (`^\s*\[SPEAKER_\w+\]\s*:?\s*`) and `_strip_embedded_speaker` helper (loops to clear a doubled prefix) (EPIC-044, 2026-09-01)
