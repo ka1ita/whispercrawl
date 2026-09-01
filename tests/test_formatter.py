@@ -28,6 +28,42 @@ class TestFormatterTxt:
         assert not (tmp_path / "rec.html").exists()
 
 
+class TestComposedResultStructure:
+    """EPIC-047: section headings and horizontal rules in composed documents."""
+
+    def _md(self, text: str) -> str:
+        return Formatter("md")._render_md(text)
+
+    def _html(self, text: str) -> str:
+        return Formatter("html")._render_html(text)
+
+    def test_md_passes_heading_through(self):
+        assert "# Резюме" in self._md("# Резюме\n\nbody")
+
+    def test_md_passes_hr_through(self):
+        assert "\n---\n" in self._md("a\n---\nb")
+
+    def test_html_renders_heading_as_h1(self):
+        assert "<h1>Резюме</h1>" in self._html("# Резюме\n\nbody")
+
+    def test_html_heading_level_matches_hash_count(self):
+        assert "<h3>Sub</h3>" in self._html("### Sub\n\nbody")
+
+    def test_html_renders_hr(self):
+        assert "<hr>" in self._html("# Транскрипция\n\na\n\n---\n\nb")
+
+    def test_html_composed_doc_has_headings_and_paragraphs_not_pre(self):
+        doc = "# Резюме\n\nA prose summary line.\n\n# Транскрипция\n\n[SPEAKER_00]: hi there"
+        out = self._html(doc)
+        assert "<h1>Резюме</h1>" in out
+        assert "<p>A prose summary line.</p>" in out
+        assert "<strong>[SPEAKER_00]:</strong>" in out
+        assert "<pre>" not in out
+
+    def test_html_plain_text_without_structure_still_uses_pre(self):
+        assert "<pre>" in self._html("just a plain transcript, no speakers")
+
+
 class TestFormatterHtml:
     def test_returns_html_path(self, tmp_path):
         p = tmp_path / "rec.txt"

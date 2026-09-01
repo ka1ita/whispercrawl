@@ -127,7 +127,9 @@ bash service-down.sh
 
 ## 9. Cleanup output files
 
-Remove all pipeline output files without touching source audio:
+Each processed file leaves one result (`<file>.<ext>`) and each directory one
+(`_<dirname>.<ext>`). Cleanup removes those plus any pre-EPIC-047 sidecars
+(`_fix` / `_sum` / `_all` / `_concat`), without touching source audio:
 
 ```bash
 docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup
@@ -135,6 +137,9 @@ docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --c
 # Dry run — shows what would be deleted
 docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup --dry-run
 ```
+
+**Upgrading a pre-EPIC-047 catalog:** run the cleanup once, then re-run with
+`--refresh` (or `rescan: true`) to regenerate results in the single-file form.
 
 ---
 

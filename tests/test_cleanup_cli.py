@@ -26,6 +26,30 @@ def _touch(path: Path, text: str = "x") -> Path:
     return path
 
 
+class TestSweepsLegacySidecars:
+    """EPIC-047: default cleanup.targets include the pre-047 sidecar labels."""
+
+    def test_default_targets_remove_fix_sum_all_concat(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        legacy = [
+            _touch(tmp_path / "call.txt"),
+            _touch(tmp_path / "call_fix.txt"),
+            _touch(tmp_path / "call_sum.txt"),
+            _touch(tmp_path / (tmp_path.name + "_all.txt")),
+            _touch(tmp_path / (tmp_path.name + "_concat.txt")),
+        ]
+        cfg = Config(
+            watch_dir=tmp_path,
+            extensions=EXTENSIONS,
+            formatter=FormatterConfig(format="txt"),
+            cleanup=CleanupConfig(on="success"),  # default targets
+            logging=LoggingConfig(),
+        )
+        run_cleanup(cfg)
+        for p in legacy:
+            assert not p.exists()
+
+
 class TestRunCleanupDeletes:
     def test_removes_output_files(self, tmp_path):
         audio = tmp_path / "call.mp3"

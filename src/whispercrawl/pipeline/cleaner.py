@@ -13,8 +13,16 @@ _ALL_EXTS = frozenset({".txt", ".md", ".html"})
 
 
 class Cleaner:
-    def __init__(self, config: CleanupConfig, output_format: str = "txt") -> None:
+    def __init__(
+        self,
+        config: CleanupConfig,
+        output_format: str = "txt",
+        engine_labels: "List[str] | None" = None,
+    ) -> None:
         self.config = config
+        # Filename segments for every configured ASR engine ("" = the single
+        # implicit engine); each configured suffix is removed once per segment.
+        self.engine_labels = engine_labels or [""]
         if output_format == "html":
             self._ext = ".html"
         elif output_format == "md":
@@ -27,27 +35,29 @@ class Cleaner:
     ) -> None:
         """Remove output files left from a previous run that used a different format extension."""
         other_exts = _ALL_EXTS - {self._ext}
-        for suffix in suffix_labels:
-            for ext in sorted(other_exts):
-                out = file_path.with_name(file_path.stem + suffix + ext)
-                if out.exists():
-                    if dry_run:
-                        logger.info("Would remove stale format output: %s", out)
-                    else:
-                        out.unlink()
-                        logger.info("Removed stale format output: %s", out)
+        for label in self.engine_labels:
+            for suffix in suffix_labels:
+                for ext in sorted(other_exts):
+                    out = file_path.with_name(file_path.stem + label + suffix + ext)
+                    if out.exists():
+                        if dry_run:
+                            logger.info("Would remove stale format output: %s", out)
+                        else:
+                            out.unlink()
+                            logger.info("Removed stale format output: %s", out)
 
     def clean(self, file_path: Path, success: bool) -> None:
         """Remove configured output files for file_path after a pipeline run."""
         if self.config.on == "success" and not success:
             return
-        for suffix in self.config.targets:
-            name = (
-                file_path.stem + suffix
-                if suffix.endswith(".json")
-                else file_path.stem + suffix + self._ext
-            )
-            output = file_path.with_name(name)
-            if output.exists():
-                output.unlink()
-                logger.info("Cleaned: %s", output)
+        for label in self.engine_labels:
+            for suffix in self.config.targets:
+                name = (
+                    file_path.stem + suffix
+                    if suffix.endswith(".json")
+                    else file_path.stem + label + suffix + self._ext
+                )
+                output = file_path.with_name(name)
+                if output.exists():
+                    output.unlink()
+                    logger.info("Cleaned: %s", output)

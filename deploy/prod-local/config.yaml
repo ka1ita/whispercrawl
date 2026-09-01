@@ -49,6 +49,16 @@ formatter:
   # speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
   # text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
 
+# ── Result document (EPIC-047) ────────────────────────────────────────────────
+# One result beside each audio file and one per directory: summary section
+# (when enabled) then the transcript. Raw/intermediate text lives in the index.
+result:
+  file_sections: [summary, transcript]
+  dir_sections: [summary, transcript]
+  summary_heading: Резюме
+  transcript_heading: Транскрипция
+  heading_level: 1
+
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
   url: ${WHISPER_URL:http://whisper:9000}
@@ -58,6 +68,13 @@ transcription:
   error_suffix: _err
   timeout: 3600
   # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
+  # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
+  # engines:
+  #   - name: whisperx
+  #     url: http://whisper:9000
+  #   - name: faster
+  #     url: http://whisper2:9000
+  #     diarize: false
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
@@ -99,10 +116,9 @@ postprocessing:
     - '.*Аминь.\n'
     - '.*Аллилуйя.\n'
     - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
-  output_suffix: _fix
   error_suffix: _err
   timeout: 600
-  replace_transcription: true
+  # output_suffix / replace_transcription: deprecated no-ops since EPIC-047
   filename_timestamp_format:
     - "%Y-%m-%d_%H_%M_%S"
     - "%Y-%m-%d_%H-%M-%S"
@@ -120,15 +136,14 @@ file_summarization:
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  output_suffix: _sum
   error_suffix: _err
   timeout: 300
+  # output_suffix: deprecated no-op since EPIC-047
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
   concat_source: postprocessed      # "postprocessed" | "original"
-  underscore_prefix: false
-  # concat_suffix: _concat
+  underscore_prefix: false          # true → dir result named _<dirname>.<ext>
   llm_enabled: true
   url: ${OLLAMA_URL:http://ollama:11434}
   model: gemma3:1b
@@ -136,9 +151,9 @@ dir_summarization:
     Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  output_suffix: _sum
   error_suffix: _err
   timeout: 300
+  # concat_suffix / output_suffix: deprecated no-ops since EPIC-047
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 cleanup:
@@ -146,6 +161,8 @@ cleanup:
     - ""
     - _fix
     - _sum
+    - _all
+    - _concat
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

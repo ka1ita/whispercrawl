@@ -227,5 +227,7 @@ def test_refresh_reruns_postprocess_and_summary(tmp_path: Path):
 
     assert pp_calls == ["raw text"]          # postprocess re-run from the stored ASR text
     assert sum_calls == ["rec.mp3"]          # summary re-run
-    assert (tmp_path / "rec_fix.txt").read_text(encoding="utf-8") == "fixed v2"
-    assert (tmp_path / "rec_sum.txt").read_text(encoding="utf-8") == "sum v2"
+    result = (tmp_path / "rec.txt").read_text(encoding="utf-8")
+    assert "fixed v2" in result and "sum v2" in result  # composed into the one result file
+    assert not (tmp_path / "rec_fix.txt").exists()
+    assert not (tmp_path / "rec_sum.txt").exists()

@@ -37,6 +37,21 @@ class TranscriptionConfig:
     word_timestamps: Optional[bool] = None
     encode: Optional[bool] = None
 
+    # EPIC-048 — multiple ASR engines. ``name`` is the engine's filename segment
+    # and processing-index key ("" = the single implicit engine, no segment).
+    # ``engines`` is meaningful only on the top-level ``transcription`` block and
+    # is resolved by ``load_config`` into a non-empty list of per-engine configs.
+    name: str = ""
+    engines: List["TranscriptionConfig"] = field(default_factory=list)
+
+
+_ENGINE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def engine_label(name: str) -> str:
+    """Filename segment / index-key suffix for an engine (``""`` → no segment)."""
+    return f"_{name}" if name else ""
+
 
 @dataclass
 class OllamaStepConfig:
@@ -66,7 +81,11 @@ class ScheduleConfig:
 
 @dataclass
 class CleanupConfig:
-    targets: List[str] = field(default_factory=lambda: ["", "_fix", "_sum", "_diarize.json"])
+    # "" is the consolidated per-file / per-directory result (EPIC-047); the
+    # rest are pre-047 scattered sidecars, swept once on upgrade.
+    targets: List[str] = field(
+        default_factory=lambda: ["", "_fix", "_sum", "_all", "_concat", "_diarize.json"]
+    )
     on: str = "success"  # "success" | "always"
 
 
@@ -136,6 +155,7 @@ class Config:
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    result: ResultConfig = field(default_factory=ResultConfig)
 
 
 def _build(cls, d: dict):
@@ -168,6 +188,55 @@ def load_config(path: Path) -> Config:
             f" got {dir_sum_cfg.concat_source!r}"
         )
 
+    result_cfg = _build(ResultConfig, raw.get("result", {}) or {})
+    _known_sections = ("summary", "transcript")
+    for _attr in ("file_sections", "dir_sections"):
+        bad = [s for s in getattr(result_cfg, _attr) if s not in _known_sections]
+        if bad:
+            raise ValueError(
+                f"result.{_attr} entries must be one of {_known_sections}, got {bad!r}"
+            )
+    if not 1 <= result_cfg.heading_level <= 6:
+        raise ValueError(
+            f"result.heading_level must be between 1 and 6, got {result_cfg.heading_level!r}"
+        )
+
+    for _sect, _fld in (
+        ("postprocessing", "replace_transcription"),
+        ("file_summarization", "output_suffix"),
+        ("dir_summarization", "concat_suffix"),
+        ("dir_summarization", "output_suffix"),
+    ):
+        if isinstance(raw.get(_sect), dict) and _fld in raw[_sect]:
+            logger.warning(
+                "%s.%s is deprecated and ignored since EPIC-047 (one consolidated "
+                "result file per audio file / per directory)",
+                _sect, _fld,
+            )
+
+    tr_raw = dict(raw.get("transcription", {}) or {})
+    engine_entries = tr_raw.pop("engines", None) or []
+    transcription_cfg = _build(TranscriptionConfig, tr_raw)
+    if engine_entries:
+        resolved = []
+        for entry in engine_entries:
+            merged = {**tr_raw, **(entry or {})}
+            merged.pop("engines", None)
+            resolved.append(_build(TranscriptionConfig, merged))
+    else:
+        resolved = [_build(TranscriptionConfig, {**tr_raw, "name": ""})]
+    names = [e.name for e in resolved]
+    for n in names:
+        if engine_entries and not n:
+            raise ValueError("every transcription.engines entry needs a non-empty 'name'")
+        if n and not _ENGINE_NAME_RE.match(n):
+            raise ValueError(
+                f"transcription engine name {n!r} must match [A-Za-z0-9._-]+"
+            )
+    if len(names) != len(set(names)):
+        raise ValueError(f"transcription engine names must be unique, got {names!r}")
+    transcription_cfg.engines = resolved
+
     watch_dir = Path(raw["watch_dir"])
 
     state_cfg = _build(StateConfig, raw.get("state", {}) or {})
@@ -190,11 +259,12 @@ def load_config(path: Path) -> Config:
         max_files_per_run=max_files_per_run,
         formatter=formatter_cfg,
         state=state_cfg,
-        transcription=_build(TranscriptionConfig, raw.get("transcription", {})),
+        transcription=transcription_cfg,
         postprocessing=_build(OllamaStepConfig, raw.get("postprocessing", {})),
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),
         dir_summarization=dir_sum_cfg,
         schedule=_build(ScheduleConfig, sched_raw),
         cleanup=_build(CleanupConfig, raw.get("cleanup", {})),
         logging=_build(LoggingConfig, raw.get("logging", {})),
+        result=result_cfg,
     )

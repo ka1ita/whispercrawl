@@ -208,6 +208,61 @@ class TestTextStorage:
         assert NullState().get_text("x", "asr", 1.0, 1) is None
         NullState().save_text("x", "asr", "t", 1.0, 1)  # no-op, no error
 
+
+class TestPerEngineText:
+    """EPIC-048: named engines store text in asr_results, independent per engine."""
+
+    def test_two_engines_are_independent(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.save_text("x.mp3", "asr", "whisperx text", 1.0, 10, engine="whisperx")
+            st.save_text("x.mp3", "asr", "faster text", 1.0, 10, engine="faster")
+            assert st.get_text("x.mp3", "asr", 1.0, 10, engine="whisperx") == "whisperx text"
+            assert st.get_text("x.mp3", "asr", 1.0, 10, engine="faster") == "faster text"
+            # the unnamed engine's column is untouched
+            assert st.get_text("x.mp3", "asr", 1.0, 10) is None
+
+    def test_engine_text_mtime_mismatch_returns_none(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.save_text("x.mp3", "asr", "t", 1.0, 10, engine="e")
+            assert st.get_text("x.mp3", "asr", 2.0, 10, engine="e") is None
+
+    def test_per_engine_step_tokens(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10, engine="a")
+            st.mark_step("x.mp3", "transcribe", 1.0, 10, engine="b")
+            st.mark_step("x.mp3", "postprocess", 1.0, 10, engine="a")
+            assert st.completed_steps("x.mp3", 1.0, 10, engine="a") == {"transcribe", "postprocess"}
+            assert st.completed_steps("x.mp3", 1.0, 10, engine="b") == {"transcribe"}
+            assert st.completed_steps("x.mp3", 1.0, 10) == set()  # no bare tokens
+
+    def test_mark_step_reset_drops_all_engines(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("x.mp3", "transcribe", 1.0, 10, engine="a")
+            st.save_text("x.mp3", "asr", "a", 1.0, 10, engine="a")
+            st.save_text("x.mp3", "asr", "b", 1.0, 10, engine="b")
+            st.mark_step("x.mp3", "transcribe", 2.0, 10, engine="a")  # file changed
+            assert st.get_text("x.mp3", "asr", 2.0, 10, engine="a") is None
+            assert st.get_text("x.mp3", "asr", 2.0, 10, engine="b") is None
+
+    def test_v3_db_gains_asr_results_table(self, tmp_path: Path):
+        db = tmp_path / "s.db"
+        conn = sqlite3.connect(db)
+        conn.executescript(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL,"
+            " status TEXT NOT NULL, updated_at REAL NOT NULL, detail TEXT NOT NULL DEFAULT '',"
+            " steps TEXT NOT NULL DEFAULT '', asr_text TEXT, fixed_text TEXT);"
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+        )
+        conn.execute("INSERT INTO files(path,mtime,size,status,updated_at) VALUES ('a.mp3',1.0,10,'done',0)")
+        conn.execute("INSERT INTO meta(key,value) VALUES ('schema_version','3')")
+        conn.commit()
+        conn.close()
+
+        with ProcessingState.open(db) as st:
+            assert st.lookup("a.mp3").status == "done"  # existing row preserved
+            st.save_text("a.mp3", "asr", "t", 1.0, 10, engine="e")
+            assert st.get_text("a.mp3", "asr", 1.0, 10, engine="e") == "t"
+
     def test_migration_adds_steps_column_to_v1_db(self, tmp_path: Path):
         db = tmp_path / "old.db"
         conn = sqlite3.connect(str(db))

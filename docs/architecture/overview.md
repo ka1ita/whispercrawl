@@ -53,17 +53,34 @@ Both modes write identical output — same files, same content, same `state.db` 
 
 ### `pipeline/`
 
-All pipeline steps write plain `.txt` files internally. The Formatter runs last and converts to the final output format.
+Since EPIC-047 each processed file and each processed directory produces **one**
+consolidated result. The raw ASR transcript and the intermediate post-processed
+text are held in the processing index (`state.py`), not written beside the audio.
 
-| Module | Input | Output file suffix |
+| Module | Input | Output |
 |---|---|---|
-| `transcriber.py` | audio/video path | `<suffix>.txt` (configurable label, default `""`) |
-| `postprocessor.py` | `<suffix>.txt` content | `_fix.txt` (configurable) |
-| `summarizer.py` (per-file) | `_fix.txt` content | `_sum.txt` (configurable) |
-| `summarizer.py` (per-dir) | all `_sum.txt` in dir | `<dirname>_sum.txt` |
-| `formatter.py` | any `*.txt` output above | `*.txt` / `*.md` / `*.html` (per config) |
+| `transcriber.py` | audio/video path | transcript text (→ index `asr_text`) |
+| `postprocessor.py` | transcript text | fixed text (→ index `fixed_text`, in memory) |
+| `summarizer.py` (per-file) | transcript / fixed text | summary text (in memory) |
+| `summarizer.py` (per-dir) | all transcripts in the dir | concat + optional dir summary (in memory) |
+| `composer.py` | `(summary, transcript)` sections | one plain-text document with `#` headings |
+| `formatter.py` | the composed `.txt` | `<file>.txt` / `.md` / `.html`, `_<dirname>.<ext>` |
 
-The Formatter is a no-op when `formatter.format: txt`. For `md` and `html` it reads each `.txt` file, writes the converted file, and removes the `.txt` original.
+`composer.compose(sections, bodies, headings, ResultConfig)` joins the ordered
+sections as `# heading` + body blocks (`result.separator` between them). A single
+surviving section is emitted bare (no heading) unless
+`result.include_missing_headings` is set. The Formatter recognises those `#`
+headings and `---` rules: `md`/`txt` pass them through, `html` renders `<h1>…`/`<hr>`.
+
+The Formatter is a no-op when `formatter.format: txt`. For `md` and `html` it
+reads the composed `.txt`, writes the converted file, and removes the `.txt`.
+
+Per-file result: `<file>.<ext>` — `result.file_sections` (summary then transcript
+body; the body is the post-processed text when post-processing ran, else the raw
+transcript). Per-directory result: `_<dirname>.<ext>` (or `<dirname>.<ext>` when
+`dir_summarization.underscore_prefix: false`) — `result.dir_sections` (dir summary
+then every transcript concatenated with filename headers). `_err.txt` is the only
+remaining sidecar and only on failure.
 
 ### `config.py`
 
@@ -73,10 +90,11 @@ Key sub-configs:
 
 | Dataclass | Purpose |
 |---|---|
-| `TranscriptionConfig` | whisper-asr-webservice connection and ASR options |
-| `OllamaStepConfig` | Ollama connection, model, prompt, and suffix — shared by postprocessing, file_summarization, dir_summarization |
+| `TranscriptionConfig` | whisper-asr-webservice connection and ASR options; `name` + `engines` list for multi-engine (EPIC-048) |
+| `OllamaStepConfig` | Ollama connection, model, prompt — shared by postprocessing, file_summarization, dir_summarization |
 | `FormatterConfig` | Output format (`txt`/`html`/`md`), `enabled` flag, speaker label style |
-| `CleanupConfig` | Which output suffixes `--cleanup` removes |
+| `ResultConfig` | Consolidated-result assembly: section order/headings, heading level, separator (`result:`) |
+| `CleanupConfig` | Which output suffixes `--cleanup` removes (incl. pre-047 `_fix`/`_sum`/`_all`/`_concat`) |
 | `ScheduleConfig` | Cron or interval schedule |
 | `StateConfig` | Persisted processing-index toggle, path, and `store_text` (raw + fixed transcript in the index for `--refresh`) |
 | `LoggingConfig` | App log file, request logging, diarization JSON dump (`<log_dir>/diarize/`) |
@@ -94,9 +112,9 @@ CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be pr
 ## File Output Conventions
 
 - Output files sit **beside** the source audio/video file.
-- All pipeline steps always write plain `.txt` regardless of the configured format.
-- After each file's steps complete, `Formatter.format_file()` converts each output to the final format (`.md` or `.html`) and removes the `.txt` original.
-- A file is only written on **success** — partial/error state writes `_err.txt` (always `.txt`, never converted).
+- One consolidated result per audio file (`<file>.<ext>`) and one per directory (`_<dirname>.<ext>`); no `_fix`/`_sum`/`_all`/`_concat` sidecars (EPIC-047).
+- The composed result is assembled as plain `.txt`, then `Formatter.format_file()` converts it to `.md`/`.html` and removes the `.txt`.
+- A result is written only on **success** of every step for that file — otherwise only `_err.txt` (always `.txt`, never converted), which is removed on the next success.
 - Language is inferred from filename suffix `_ru`/`_en`/`_auto`; falls back to config default.
 
 ### Output format (`formatter.format`)

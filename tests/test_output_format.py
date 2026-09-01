@@ -298,6 +298,41 @@ class TestTxtPipelineOutput:
         assert (tmp_path / "rec.txt").read_text(encoding="utf-8") == "transcript text"
 
 
+class TestConsolidatedFileResult:
+    """EPIC-047: one per-file result = summary section then transcript."""
+
+    def _config(self, tmp_path: Path) -> Config:
+        return Config(
+            watch_dir=tmp_path,
+            extensions=[".mp3"],
+            rescan=True,
+            formatter=FormatterConfig(format="txt"),
+            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            postprocessing=OllamaStepConfig(llm_enabled=True, regex_enabled=False),
+            file_summarization=OllamaStepConfig(llm_enabled=True),
+            dir_summarization=DirSummarizationConfig(llm_enabled=False),
+            schedule=ScheduleConfig(),
+            cleanup=CleanupConfig(targets=[]),
+            logging=LoggingConfig(),
+        )
+
+    def test_result_has_summary_then_transcript_and_no_sidecars(self, tmp_path):
+        (tmp_path / "rec.mp3").write_bytes(b"\x00")
+        with (
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="[SPEAKER_00]: hello"),
+            patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", return_value="[SPEAKER_00]: hello fixed"),
+            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="THE SUMMARY"),
+        ):
+            run_pipeline(self._config(tmp_path))
+
+        content = (tmp_path / "rec.txt").read_text(encoding="utf-8")
+        assert "# Резюме" in content
+        assert "# Транскрипция" in content
+        assert content.index("THE SUMMARY") < content.index("hello fixed")
+        assert not (tmp_path / "rec_fix.txt").exists()
+        assert not (tmp_path / "rec_sum.txt").exists()
+
+
 # ── Dir concat uses in-memory texts, not files on disk ────────────────────────
 
 class TestDirConcatUsesMemoryTexts:
@@ -364,27 +399,28 @@ class TestDirSumAfterFormatter:
         ):
             run_pipeline(self._config(tmp_path, fmt))
 
-    def test_md_dir_sum_written_as_md(self, tmp_path):
+    def test_md_dir_result_written_as_md(self, tmp_path):
         self._run(tmp_path, "md")
-        assert (tmp_path / f"{tmp_path.name}_sum.md").exists()
+        assert (tmp_path / f"{tmp_path.name}.md").exists()
 
-    def test_md_no_orphan_sum_txt(self, tmp_path):
+    def test_md_no_orphan_txt(self, tmp_path):
         self._run(tmp_path, "md")
         assert not (tmp_path / "rec_sum.txt").exists()
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        assert not (tmp_path / "rec.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}.txt").exists()
 
-    def test_html_dir_sum_written_as_html(self, tmp_path):
+    def test_html_dir_result_written_as_html(self, tmp_path):
         self._run(tmp_path, "html")
-        assert (tmp_path / f"{tmp_path.name}_sum.html").exists()
+        assert (tmp_path / f"{tmp_path.name}.html").exists()
 
-    def test_html_no_orphan_sum_txt(self, tmp_path):
+    def test_html_no_orphan_txt(self, tmp_path):
         self._run(tmp_path, "html")
         assert not (tmp_path / "rec_sum.txt").exists()
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}.txt").exists()
 
-    def test_txt_dir_sum_succeeds(self, tmp_path):
+    def test_txt_dir_result_succeeds(self, tmp_path):
         self._run(tmp_path, "txt")
-        assert (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        assert (tmp_path / f"{tmp_path.name}.txt").exists()
 
 
 # ── Filename headers in concat output (EPIC-034) ─────────────────────────────
@@ -454,25 +490,25 @@ class TestConcatFormatterPass:
         ):
             run_pipeline(self._config(tmp_path, fmt))
 
-    def test_md_concat_written_as_md(self, tmp_path):
+    def test_md_dir_result_written_as_md(self, tmp_path):
         self._run(tmp_path, "md")
-        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
+        assert (tmp_path / f"{tmp_path.name}.md").exists()
 
-    def test_md_no_orphan_concat_txt(self, tmp_path):
+    def test_md_no_orphan_txt(self, tmp_path):
         self._run(tmp_path, "md")
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}.txt").exists()
 
-    def test_html_concat_written_as_html(self, tmp_path):
+    def test_html_dir_result_written_as_html(self, tmp_path):
         self._run(tmp_path, "html")
-        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
+        assert (tmp_path / f"{tmp_path.name}.html").exists()
 
-    def test_html_no_orphan_concat_txt(self, tmp_path):
+    def test_html_no_orphan_txt(self, tmp_path):
         self._run(tmp_path, "html")
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}.txt").exists()
 
-    def test_txt_concat_remains_txt(self, tmp_path):
+    def test_txt_dir_result_remains_txt(self, tmp_path):
         self._run(tmp_path, "txt")
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert (tmp_path / f"{tmp_path.name}.txt").exists()
 
 
 # ── Cleanup removes concat in correct format (EPIC-034) ──────────────────────

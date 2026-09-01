@@ -59,6 +59,94 @@ class TestMaxFilesPerRun:
             load_config(_write(tmp_path, "max_files_per_run: -5\n"))
 
 
+class TestResultConfig:
+    def test_defaults(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, ""))
+        assert cfg.result.file_sections == ["summary", "transcript"]
+        assert cfg.result.dir_sections == ["summary", "transcript"]
+        assert cfg.result.heading_level == 1
+        assert cfg.result.include_missing_headings is False
+
+    def test_custom_sections_and_headings(self, tmp_path: Path):
+        cfg = load_config(_write(
+            tmp_path,
+            "result:\n"
+            "  file_sections: [transcript]\n"
+            "  summary_heading: Summary\n"
+            "  heading_level: 2\n",
+        ))
+        assert cfg.result.file_sections == ["transcript"]
+        assert cfg.result.summary_heading == "Summary"
+        assert cfg.result.heading_level == 2
+
+    def test_invalid_section_name_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="file_sections"):
+            load_config(_write(tmp_path, "result:\n  file_sections: [summary, bogus]\n"))
+
+    def test_invalid_dir_section_name_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="dir_sections"):
+            load_config(_write(tmp_path, "result:\n  dir_sections: [nope]\n"))
+
+    def test_heading_level_out_of_range_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="heading_level"):
+            load_config(_write(tmp_path, "result:\n  heading_level: 7\n"))
+
+    def test_deprecated_fields_parse_without_error(self, tmp_path: Path):
+        cfg = load_config(_write(
+            tmp_path,
+            "postprocessing:\n  replace_transcription: true\n"
+            "dir_summarization:\n  concat_suffix: _all\n  output_suffix: _sum\n"
+            "file_summarization:\n  output_suffix: _sum\n",
+        ))
+        assert cfg is not None
+
+
+class TestTranscriptionEngines:
+    def test_no_engines_key_yields_one_unnamed_engine(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, "transcription:\n  language: ru\n"))
+        assert [e.name for e in cfg.transcription.engines] == [""]
+        assert cfg.transcription.engines[0].language == "ru"
+
+    def test_engines_merge_onto_base(self, tmp_path: Path):
+        cfg = load_config(_write(
+            tmp_path,
+            "transcription:\n"
+            "  timeout: 1200\n"
+            "  diarize: true\n"
+            "  engines:\n"
+            "    - name: whisperx\n"
+            "    - name: faster\n"
+            "      diarize: false\n",
+        ))
+        engs = {e.name: e for e in cfg.transcription.engines}
+        assert set(engs) == {"whisperx", "faster"}
+        assert engs["whisperx"].timeout == 1200      # inherited from base
+        assert engs["whisperx"].diarize is True       # inherited
+        assert engs["faster"].diarize is False        # overridden
+        assert engs["faster"].timeout == 1200         # still inherited
+
+    def test_duplicate_engine_name_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="unique"):
+            load_config(_write(
+                tmp_path,
+                "transcription:\n  engines:\n    - name: x\n    - name: x\n",
+            ))
+
+    def test_unsafe_engine_name_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="A-Za-z0-9"):
+            load_config(_write(
+                tmp_path,
+                "transcription:\n  engines:\n    - name: 'has/slash'\n",
+            ))
+
+    def test_empty_name_with_engines_list_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="non-empty"):
+            load_config(_write(
+                tmp_path,
+                "transcription:\n  engines:\n    - url: http://x\n",
+            ))
+
+
 class TestProcessingMode:
     def test_defaults_to_per_file(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, ""))

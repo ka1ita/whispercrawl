@@ -13,6 +13,11 @@ from pathlib import Path
 # trailing colon if present (reproduced, never injected). Group 3: the text.
 _SPEAKER_RE = re.compile(r'^\[(SPEAKER_[^\]]*?)\](:?)\s*(.*)$')
 
+# Composed-result structure (EPIC-047): markdown-style section headings and
+# horizontal rules the composer / concat step emit.
+_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*\S)\s*$')
+_HR_RE = re.compile(r'^-{3,}$')
+
 
 class Formatter:
     def __init__(
@@ -57,13 +62,20 @@ class Formatter:
     def _render_html(self, text: str) -> str:
         lines = text.splitlines()
         has_speakers = any(_SPEAKER_RE.match(line) for line in lines)
-        if not has_speakers:
+        has_headings = any(_HEADING_RE.match(line) for line in lines)
+        if not has_speakers and not has_headings:
             body = f"<pre>{escape(text)}</pre>"
         else:
             parts = []
             for line in lines:
                 m = _SPEAKER_RE.match(line)
-                if m:
+                h = _HEADING_RE.match(line)
+                if h:
+                    level = min(len(h.group(1)), 6)
+                    parts.append(f"<h{level}>{escape(h.group(2))}</h{level}>")
+                elif _HR_RE.match(line):
+                    parts.append("<hr>")
+                elif m:
                     parts.append(self._html_speaker_line(m.group(1), m.group(2), m.group(3)))
                 elif line.strip():
                     parts.append(f"<p>{escape(line)}</p>")

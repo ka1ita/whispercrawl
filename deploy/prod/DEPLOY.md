@@ -80,7 +80,9 @@ bash service-down.sh
 
 ## 6. Cleanup output files
 
-Remove all pipeline output files (`.txt`, `_fix.txt`, `_sum.txt`) without touching source audio:
+Each processed file now leaves one result (`<file>.<ext>`) and each directory one
+(`_<dirname>.<ext>`). Cleanup removes those plus any pre-EPIC-047 sidecars
+(`_fix` / `_sum` / `_all` / `_concat`), without touching source audio:
 
 ```bash
 bash service-cleanup.sh
@@ -88,6 +90,10 @@ bash service-cleanup.sh
 # Dry run — shows what would be deleted
 bash service-cleanup.sh --dry-run
 ```
+
+**Upgrading a catalog produced before EPIC-047:** run `service-cleanup.sh` once to
+sweep the old scattered files, then re-run the pipeline with `--refresh` (or
+`rescan: true`) to regenerate results in the single-file form.
 
 ---
 

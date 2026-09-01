@@ -53,6 +53,16 @@ formatter:
   speaker_style: bold     # bold | italic | plain — emphasis on [SPEAKER_XX]: label (default: bold)
   text_placement: same_line  # same_line | new_line — where transcript text follows the label (default: same_line)
 
+# ── Result document (EPIC-047) ────────────────────────────────────────────────
+# One result beside each audio file (<file>.<ext>) and one per directory
+# (_<dirname>.<ext>): summary section (when enabled) then the transcript.
+result:
+  file_sections: [summary, transcript]
+  dir_sections: [summary, transcript]
+  summary_heading: Резюме
+  transcript_heading: Транскрипция
+  heading_level: 1
+
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
   url: ${WHISPER_URL:http://localhost:9000}   # whisper-asr-webservice base URL
@@ -66,6 +76,15 @@ transcription:
   # vad_filter: false                 # Voice activity detection (faster_whisper only)
   # word_timestamps: false            # Return per-word timestamps
   # encode: true                      # Re-encode audio before sending
+  # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
+  # Each entry inherits the settings above; every engine transcribes every file
+  # and gets its own <file>_<name>.<ext> / _<dirname>_<name>.<ext> results.
+  # engines:
+  #   - name: whisperx
+  #     url: http://localhost:9000
+  #   - name: faster
+  #     url: http://localhost:9001
+  #     diarize: false
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:
@@ -107,10 +126,9 @@ postprocessing:
     - '.*Аминь.\n'
     - '.*Аллилуйя.\n'
     - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
-  output_suffix: _fix                # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 600                      # HTTP timeout in seconds
-  replace_transcription: true    # true = move _fix over transcript after success (no _fix kept)
+  # output_suffix / replace_transcription: deprecated no-ops since EPIC-047
   filename_timestamp_format:
     - "%Y-%m-%d_%H_%M_%S"
     - "%Y-%m-%d-%H-%M-%S"
@@ -127,15 +145,14 @@ file_summarization:
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  output_suffix: _sum               # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 300                      # HTTP timeout in seconds
+  # output_suffix: deprecated no-op since EPIC-047
 
 # ── Per-Directory Summarization ───────────────────────────────────────────────
 dir_summarization:
   concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
-  underscore_prefix: true        # true → output files named _<dirname>_concat.txt / _<dirname>_sum.<ext>
-  concat_suffix: _all          # suffix label for the combined transcriptions file
+  underscore_prefix: true        # true → the one dir result is named _<dirname>.<ext> (else <dirname>.<ext>)
   llm_enabled: false
   url: ${OLLAMA_URL:http://localhost:11434}
   model: gemma3:1b
@@ -143,12 +160,13 @@ dir_summarization:
     Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  output_suffix: _sum               # Suffix label (extension comes from formatter.format)
   error_suffix: _err                # Error file suffix label
   timeout: 300                      # HTTP timeout in seconds
+  # concat_suffix / output_suffix: deprecated no-ops since EPIC-047
 
 # ── Cleanup (used with --cleanup / --once --cleanup flags) ───────────────────
 # targets: suffix labels to remove (extension derived from formatter.format; _diarize.json always literal)
+#   "" is the consolidated result; _fix/_sum/_all/_concat are pre-047 sidecars.
 # on: "success" — only clean when all pipeline steps succeeded
 #     "always"  — clean even after a failed step
 cleanup:
@@ -157,6 +175,7 @@ cleanup:
     - _fix
     - _sum
     - _all
+    - _concat
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

@@ -26,6 +26,15 @@ Key parameters:
 
 Plain text (when `output=txt`) or structured JSON. With diarization, JSON includes speaker labels.
 
+## Multiple engines (EPIC-048)
+
+`transcription.engines` in `config.yaml` is a list of engine configs — each one
+maps to a single `/asr` service (its own `url`, `language`, `diarize`, params).
+whispercrawl calls every configured engine for every file and keeps their
+outputs separate (`<file>_<name>.<ext>`, `_<dirname>_<name>.<ext>`, and separate
+processing-index rows). It does not use any multi-model feature of a single
+service — run one `whisper-asr-webservice` per engine.
+
 ## Docker (dev)
 
 ```yaml

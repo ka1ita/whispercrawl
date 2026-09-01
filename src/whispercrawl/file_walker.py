@@ -32,6 +32,7 @@ def iter_media_files(
     max_age_days: Optional[int] = None,
     state: Optional[State] = None,
     ignore_processed: bool = False,
+    engine_labels: Optional[List[str]] = None,
 ) -> Generator[Path, None, None]:
     """Yield media files under root that need processing, newest first.
 
@@ -46,6 +47,7 @@ def iter_media_files(
     state or existing outputs — the index skip and back-fill are bypassed.
     """
     _all_exts = (".txt", ".md", ".html")
+    _elabels = engine_labels or [""]
     _marker = skip_marker.lower() if skip_marker else ""
     _cutoff = time.time() - max_age_days * 86400 if max_age_days is not None else None
 
@@ -77,8 +79,10 @@ def iter_media_files(
             # otherwise an earlier step's leftover output would silently erase the
             # recorded error and the file would never be retried.
             if state is None or state.lookup(rel) is None:
-                stem = path.stem + transcription_suffix
-                if any(path.with_name(stem + e).exists() for e in _all_exts):
+                def _has_output(label: str) -> bool:
+                    stem = path.stem + label + transcription_suffix
+                    return any(path.with_name(stem + e).exists() for e in _all_exts)
+                if all(_has_output(label) for label in _elabels):
                     if state is not None:
                         state.mark(rel, "done", mtime, size, detail="back-filled from output file")
                     continue

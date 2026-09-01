@@ -19,7 +19,7 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 STATE_DIRNAME = "db"
 LEGACY_STATE_DIRNAME = ".whispercrawl"  # pre-EPIC-043 location, under watch_dir
 STATE_FILENAME = "state.db"
@@ -43,10 +43,23 @@ CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+-- EPIC-048: per-engine ASR / post-processed text. The ``files`` columns
+-- ``asr_text`` / ``fixed_text`` remain the store for the single implicit
+-- engine (``engine = ''``); named engines live here.
+CREATE TABLE IF NOT EXISTS asr_results (
+    path   TEXT NOT NULL,
+    engine TEXT NOT NULL,
+    kind   TEXT NOT NULL,
+    text   TEXT,
+    mtime  REAL,
+    size   INTEGER,
+    PRIMARY KEY (path, engine, kind)
+);
 """
 
 # Text payloads stored on the row so `--refresh` can re-run every step
-# downstream of ASR without another whisper call. See EPIC-046.
+# downstream of ASR without another whisper call. See EPIC-046. Used only for
+# the single implicit engine (``engine == ""``); named engines use asr_results.
 _TEXT_COLUMNS = {"asr": "asr_text", "fixed": "fixed_text"}
 
 
@@ -99,31 +112,42 @@ class ProcessingState:
         ).fetchone()
         return Record(*row) if row else None
 
-    def completed_steps(self, rel_path: str, mtime: float, size: int) -> set:
+    @staticmethod
+    def _step_token(step: str, engine: str) -> str:
+        return f"{step}:{engine}" if engine else step
+
+    def completed_steps(self, rel_path: str, mtime: float, size: int, engine: str = "") -> set:
         """Steps recorded as completed for this file's current mtime/size generation.
 
         Returns an empty set when there is no row, or when the stored row's
         mtime/size don't match — a changed file discards any recorded progress.
+        For a named engine, only that engine's ``step:engine`` tokens are
+        returned, stripped back to the bare step name.
         """
         rec = self.lookup(rel_path)
         if rec is None or abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size:
             return set()
-        return {s for s in rec.steps.split(",") if s}
+        tokens = {s for s in rec.steps.split(",") if s}
+        if engine:
+            suffix = f":{engine}"
+            return {t[: -len(suffix)] for t in tokens if t.endswith(suffix)}
+        return {t for t in tokens if ":" not in t}
 
-    def mark_step(self, rel_path: str, step: str, mtime: float, size: int) -> None:
+    def mark_step(self, rel_path: str, step: str, mtime: float, size: int, engine: str = "") -> None:
         """Record a single pipeline step as completed for this file's attempt.
 
         Resets the recorded step set when the file changed since the last
         attempt (or there is none yet); otherwise adds ``step`` to it. A
-        changed file also drops any stored ``asr_text`` / ``fixed_text`` — the
-        old generation's text must not be reused.
+        changed file also drops any stored text — the old generation's text
+        must not be reused, for any engine.
         """
+        token = self._step_token(step, engine)
         rec = self.lookup(rel_path)
         changed = rec is not None and (
             abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size
         )
         steps = set() if (rec is None or changed) else {s for s in rec.steps.split(",") if s}
-        steps.add(step)
+        steps.add(token)
         joined = ",".join(sorted(steps))
         if changed:
             self._conn.execute(
@@ -131,6 +155,7 @@ class ProcessingState:
                 "steps=?, asr_text=NULL, fixed_text=NULL WHERE path=?",
                 (mtime, size, time.time(), joined, rel_path),
             )
+            self._conn.execute("DELETE FROM asr_results WHERE path=?", (rel_path,))
         else:
             self._conn.execute(
                 "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
@@ -142,12 +167,25 @@ class ProcessingState:
             )
         self._conn.commit()
 
-    def save_text(self, rel_path: str, kind: str, text: str, mtime: float, size: int) -> None:
+    def save_text(
+        self, rel_path: str, kind: str, text: str, mtime: float, size: int, engine: str = ""
+    ) -> None:
         """Persist a step's text output (``kind`` is ``"asr"`` or ``"fixed"``).
 
-        Upserts the matching column against the file's current mtime/size row so
-        ``--refresh`` can read it back later. Leaves status/steps/detail alone.
+        The single implicit engine (``engine == ""``) uses the ``files`` text
+        columns; a named engine uses the ``asr_results`` table. Keyed to the
+        file's current mtime/size so ``--refresh`` can read it back.
         """
+        if engine:
+            self._conn.execute(
+                "INSERT INTO asr_results(path, engine, kind, text, mtime, size) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT(path, engine, kind) DO UPDATE SET "
+                "text=excluded.text, mtime=excluded.mtime, size=excluded.size",
+                (rel_path, engine, kind, text, mtime, size),
+            )
+            self._conn.commit()
+            return
         col = _TEXT_COLUMNS[kind]
         self._conn.execute(
             f"INSERT INTO files(path, mtime, size, status, updated_at, {col}) "
@@ -157,12 +195,22 @@ class ProcessingState:
         )
         self._conn.commit()
 
-    def get_text(self, rel_path: str, kind: str, mtime: float, size: int) -> Optional[str]:
+    def get_text(
+        self, rel_path: str, kind: str, mtime: float, size: int, engine: str = ""
+    ) -> Optional[str]:
         """Return the stored text for an unchanged file, else ``None``.
 
         ``None`` when there is no row, the row's mtime/size don't match, or the
-        column was never populated.
+        text was never populated for this engine.
         """
+        if engine:
+            row = self._conn.execute(
+                "SELECT text, mtime, size FROM asr_results WHERE path=? AND engine=? AND kind=?",
+                (rel_path, engine, kind),
+            ).fetchone()
+            if row is None or abs(row[1] - mtime) >= _MTIME_TOLERANCE or row[2] != size:
+                return None
+            return row[0]
         rec = self.lookup(rel_path)
         if rec is None or abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size:
             return None
@@ -191,10 +239,12 @@ class ProcessingState:
 
     def forget(self, rel_path: str) -> None:
         self._conn.execute("DELETE FROM files WHERE path = ?", (rel_path,))
+        self._conn.execute("DELETE FROM asr_results WHERE path = ?", (rel_path,))
         self._conn.commit()
 
     def clear(self) -> None:
         self._conn.execute("DELETE FROM files")
+        self._conn.execute("DELETE FROM asr_results")
         self._conn.commit()
 
     def close(self) -> None:
@@ -216,16 +266,20 @@ class NullState:
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         return False
 
-    def completed_steps(self, rel_path: str, mtime: float, size: int) -> set:
+    def completed_steps(self, rel_path: str, mtime: float, size: int, engine: str = "") -> set:
         return set()
 
-    def mark_step(self, rel_path: str, step: str, mtime: float, size: int) -> None:
+    def mark_step(self, rel_path: str, step: str, mtime: float, size: int, engine: str = "") -> None:
         pass
 
-    def save_text(self, rel_path: str, kind: str, text: str, mtime: float, size: int) -> None:
+    def save_text(
+        self, rel_path: str, kind: str, text: str, mtime: float, size: int, engine: str = ""
+    ) -> None:
         pass
 
-    def get_text(self, rel_path: str, kind: str, mtime: float, size: int) -> Optional[str]:
+    def get_text(
+        self, rel_path: str, kind: str, mtime: float, size: int, engine: str = ""
+    ) -> Optional[str]:
         return None
 
     def mark(self, rel_path: str, status: str, mtime: float, size: int, detail: str = "") -> None:

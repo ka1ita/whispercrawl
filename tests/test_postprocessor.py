@@ -1,8 +1,11 @@
-﻿"""Tests for replace_transcription pipeline behaviour."""
+"""Post-processing in the consolidated-result pipeline (EPIC-047).
+
+The `_fix` sidecar and `postprocessing.replace_transcription` were retired: the
+single per-file result always shows the best available transcript — the
+post-processed text when post-processing ran, else the raw transcript.
+"""
 from __future__ import annotations
 
-import logging
-from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +37,7 @@ def _config(tmp_path: Path, replace_transcription: bool = False) -> Config:
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
+        cleanup=CleanupConfig(targets=[]),
         logging=LoggingConfig(),
     )
 
@@ -46,23 +49,20 @@ FIXED = "fixed transcript"
 def _make_transcriber(response=TRANSCRIPT):
     inst = MagicMock()
     inst.transcribe.return_value = response
-    cls = MagicMock(return_value=inst)
-    return cls
+    return MagicMock(return_value=inst)
 
 
 def _make_postprocessor(response=FIXED):
     inst = MagicMock()
     inst.process.return_value = response
-    cls = MagicMock(return_value=inst)
-    return cls
+    return MagicMock(return_value=inst)
 
 
 def _make_postprocessor_failing(exc):
     from whispercrawl.pipeline.postprocessor import PostProcessingError
     inst = MagicMock()
     inst.process.side_effect = PostProcessingError(exc)
-    cls = MagicMock(return_value=inst)
-    return cls
+    return MagicMock(return_value=inst)
 
 
 def _svc_logger_patch():
@@ -70,89 +70,54 @@ def _svc_logger_patch():
     ctx = MagicMock()
     ctx.__enter__ = MagicMock(return_value=svc_log)
     ctx.__exit__ = MagicMock(return_value=False)
-    cls = MagicMock(return_value=ctx)
-    return cls
+    return MagicMock(return_value=ctx)
 
 
-def _patches(transcriber_cls, postprocessor_cls):
-    return [
+def _run(cfg, transcriber_cls, postprocessor_cls):
+    with (
         patch("whispercrawl.pipeline.transcriber.Transcriber", transcriber_cls),
         patch("whispercrawl.pipeline.postprocessor.PostProcessor", postprocessor_cls),
         patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-    ]
+    ):
+        run_pipeline(cfg)
 
 
-class TestReplaceTranscriptionFalse:
-    def test_both_files_written(self, tmp_path):
+class TestConsolidatedResult:
+    def test_result_holds_postprocessed_text(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
-        cfg = _config(tmp_path, replace_transcription=False)
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", _make_transcriber()),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", _make_postprocessor()),
-            patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-        ):
-            run_pipeline(cfg)
-
-        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == TRANSCRIPT
-        assert (tmp_path / "a_fix.txt").read_text(encoding="utf-8") == FIXED
-
-    def test_no_replace_on_postprocess_failure(self, tmp_path):
-        (tmp_path / "a.mp3").write_bytes(b"\x00")
-        cfg = _config(tmp_path, replace_transcription=False)
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", _make_transcriber()),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", _make_postprocessor_failing("boom")),
-            patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-        ):
-            run_pipeline(cfg)
-
-        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == TRANSCRIPT
-        assert not (tmp_path / "a_fix.txt").exists()
-        assert (tmp_path / "a_err.txt").exists()
-
-
-class TestReplaceTranscriptionTrue:
-    def test_fix_replaces_transcript(self, tmp_path):
-        (tmp_path / "a.mp3").write_bytes(b"\x00")
-        cfg = _config(tmp_path, replace_transcription=True)
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", _make_transcriber()),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", _make_postprocessor()),
-            patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-        ):
-            run_pipeline(cfg)
+        _run(_config(tmp_path), _make_transcriber(), _make_postprocessor())
 
         assert (tmp_path / "a.txt").read_text(encoding="utf-8") == FIXED
         assert not (tmp_path / "a_fix.txt").exists()
 
-    def test_transcript_unchanged_on_failure(self, tmp_path):
+    def test_postprocess_failure_writes_err_and_no_result(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
-        cfg = _config(tmp_path, replace_transcription=True)
+        _run(_config(tmp_path), _make_transcriber(), _make_postprocessor_failing("boom"))
 
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", _make_transcriber()),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", _make_postprocessor_failing("boom")),
-            patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-        ):
-            run_pipeline(cfg)
-
-        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == TRANSCRIPT
         assert not (tmp_path / "a_fix.txt").exists()
         assert (tmp_path / "a_err.txt").exists()
+        assert not (tmp_path / "a.txt").exists()  # a failed step → no consolidated result
 
-    def test_log_message_mentions_replace(self, tmp_path, caplog):
+
+class TestReplaceTranscriptionDeprecated:
+    def test_replace_transcription_true_is_a_noop(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
-        cfg = _config(tmp_path, replace_transcription=True)
+        _run(_config(tmp_path, replace_transcription=True), _make_transcriber(), _make_postprocessor())
 
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", _make_transcriber()),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", _make_postprocessor()),
-            patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
-            caplog.at_level(logging.INFO),
-        ):
-            run_pipeline(cfg)
+        assert (tmp_path / "a.txt").read_text(encoding="utf-8") == FIXED
+        assert not (tmp_path / "a_fix.txt").exists()
 
-        assert "Replaced transcript" in caplog.text
+    def test_config_warns_on_deprecated_field(self, tmp_path, caplog):
+        import logging as _logging
+
+        p = tmp_path / "config.yaml"
+        p.write_text(
+            f"watch_dir: {tmp_path}\nextensions: [.mp3]\n"
+            "postprocessing:\n  replace_transcription: true\n",
+            encoding="utf-8",
+        )
+        from whispercrawl.config import load_config
+
+        with caplog.at_level(_logging.WARNING):
+            load_config(p)
+        assert "replace_transcription is deprecated" in caplog.text

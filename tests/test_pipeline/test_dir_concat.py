@@ -1,10 +1,14 @@
-"""Integration tests for EPIC-033: per-directory transcription concatenation."""
+"""Integration tests for the one consolidated per-directory result (EPIC-033 → EPIC-047).
+
+A processed directory now yields a single file — ``{prefix}{dirname}.{ext}`` —
+holding the directory summary (when enabled) followed by every transcript
+concatenated with filename headers. The old ``_concat`` / ``_sum`` sidecars are
+gone.
+"""
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from whispercrawl.config import (
     CleanupConfig,
@@ -34,7 +38,6 @@ def _config(
     llm_enabled: bool = True,
     concat_source: str = "postprocessed",
     underscore_prefix: bool = False,
-    concat_suffix: str = "_concat",
     fmt: str = "txt",
 ) -> Config:
     return Config(
@@ -49,8 +52,6 @@ def _config(
             llm_enabled=llm_enabled,
             concat_source=concat_source,
             underscore_prefix=underscore_prefix,
-            concat_suffix=concat_suffix,
-            output_suffix="_sum",
             error_suffix="_err",
         ),
         schedule=ScheduleConfig(),
@@ -59,57 +60,64 @@ def _config(
     )
 
 
-class TestConcatFileWritten:
-    def test_concat_file_written_as_txt(self, tmp_path):
+def _dir_result(tmp_path: Path, ext: str = "txt", *, prefix: str = "") -> Path:
+    return tmp_path / f"{prefix}{tmp_path.name}.{ext}"
+
+
+class TestDirResultWritten:
+    def test_result_written_as_txt(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
-        concat = tmp_path / f"{tmp_path.name}_concat.txt"
-        assert concat.exists()
-        content = concat.read_text(encoding="utf-8")
+        result = _dir_result(tmp_path)
+        assert result.exists()
+        content = result.read_text(encoding="utf-8")
         assert "rec.mp3" in content
         assert "hello" in content
 
-    def test_concat_file_contains_transcript_text(self, tmp_path):
+    def test_result_contains_all_transcripts_with_separator(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
         (tmp_path / "b.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
-        concat = tmp_path / f"{tmp_path.name}_concat.txt"
-        content = concat.read_text(encoding="utf-8")
+        content = _dir_result(tmp_path).read_text(encoding="utf-8")
         assert "text" in content
         assert "---" in content  # separator between files
 
-    def test_concat_converted_to_html_format(self, tmp_path):
+    def test_result_converted_to_html_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="html"))
 
-        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert _dir_result(tmp_path, "html").exists()
+        assert not _dir_result(tmp_path, "txt").exists()
 
-    def test_concat_converted_to_md_format(self, tmp_path):
+    def test_result_converted_to_md_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="md"))
 
-        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert _dir_result(tmp_path, "md").exists()
+        assert not _dir_result(tmp_path, "txt").exists()
 
-    def test_custom_concat_suffix(self, tmp_path):
+    def test_no_legacy_concat_or_sum_sidecars(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
-            run_pipeline(_config(tmp_path, llm_enabled=False, concat_suffix="_all"))
+        with (
+            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
+            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+        ):
+            run_pipeline(_config(tmp_path, llm_enabled=True))
 
-        assert (tmp_path / f"{tmp_path.name}_all.txt").exists()
         assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        assert not (tmp_path / "rec_sum.txt").exists()
 
 
 class TestUnderscorePrefix:
@@ -119,8 +127,8 @@ class TestUnderscorePrefix:
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False, underscore_prefix=False))
 
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
-        assert not (tmp_path / f"_{tmp_path.name}_concat.txt").exists()
+        assert _dir_result(tmp_path).exists()
+        assert not _dir_result(tmp_path, prefix="_").exists()
 
     def test_prefix_true_prepends_underscore(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
@@ -128,10 +136,10 @@ class TestUnderscorePrefix:
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False, underscore_prefix=True))
 
-        assert (tmp_path / f"_{tmp_path.name}_concat.txt").exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert _dir_result(tmp_path, prefix="_").exists()
+        assert not _dir_result(tmp_path).exists()
 
-    def test_prefix_true_applies_to_llm_summary_too(self, tmp_path):
+    def test_prefix_true_with_llm_summary(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
@@ -140,51 +148,40 @@ class TestUnderscorePrefix:
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, underscore_prefix=True))
 
-        assert (tmp_path / f"_{tmp_path.name}_concat.txt").exists()
-        assert (tmp_path / f"_{tmp_path.name}_sum.txt").exists()
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-
-    def test_prefix_false_llm_summary_uses_dirname_only(self, tmp_path):
-        (tmp_path / "rec.mp3").write_bytes(b"\x00")
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
-        ):
-            run_pipeline(_config(tmp_path, llm_enabled=True, underscore_prefix=False))
-
-        assert (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-        assert not (tmp_path / f"_{tmp_path.name}_sum.txt").exists()
+        result = _dir_result(tmp_path, prefix="_")
+        assert result.exists()
+        assert "summary" in result.read_text(encoding="utf-8")
+        assert not _dir_result(tmp_path).exists()
 
 
 class TestLlmEnabledFlag:
-    def test_llm_enabled_false_skips_summary_file(self, tmp_path):
+    def test_llm_disabled_result_is_concat_only(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
+        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("body text")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        content = _dir_result(tmp_path).read_text(encoding="utf-8")
+        assert "body text" in content
+        assert "Резюме" not in content  # no summary section
 
-    def test_llm_enabled_false_still_writes_concat(self, tmp_path):
+    def test_llm_enabled_result_has_summary_and_transcript_sections(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
-            run_pipeline(_config(tmp_path, llm_enabled=False))
-
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
-
-    def test_llm_enabled_true_writes_both(self, tmp_path):
-        (tmp_path / "rec.mp3").write_bytes(b"\x00")
-
+        # patch the pipeline methods directly — transcriber and summarizer share
+        # the same httpx module, so patching httpx.post in both places collides
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="body text"),
+            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="the summary"),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True))
 
-        assert (tmp_path / f"{tmp_path.name}_concat.txt").exists()
-        assert (tmp_path / f"{tmp_path.name}_sum.txt").exists()
+        content = _dir_result(tmp_path).read_text(encoding="utf-8")
+        assert "# Резюме" in content
+        assert "the summary" in content
+        assert "# Транскрипция" in content
+        assert "body text" in content
+        assert content.index("the summary") < content.index("body text")
 
     def test_llm_receives_concatenated_transcriptions(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
@@ -202,7 +199,6 @@ class TestLlmEnabledFlag:
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True))
 
-        # summarize_file is called once for the dir summary with the concatenated transcriptions
         assert len(received_texts) == 1
         combined = received_texts[0]
         assert "raw transcript" in combined
@@ -216,22 +212,21 @@ class TestConcatSource:
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("original transcript")):
             run_pipeline(_config(tmp_path, llm_enabled=False, concat_source="original"))
 
-        content = (tmp_path / f"{tmp_path.name}_concat.txt").read_text(encoding="utf-8")
+        content = _dir_result(tmp_path).read_text(encoding="utf-8")
         assert "original transcript" in content
 
     def test_postprocessed_falls_back_to_transcript_when_no_postprocessor(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        # postprocessing is disabled, so no fixed_text; should fall back to transcript
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("raw")):
             run_pipeline(_config(tmp_path, llm_enabled=False, concat_source="postprocessed"))
 
-        content = (tmp_path / f"{tmp_path.name}_concat.txt").read_text(encoding="utf-8")
+        content = _dir_result(tmp_path).read_text(encoding="utf-8")
         assert "raw" in content
 
 
 class TestSummaryFormatterIntegration:
-    def test_summary_respects_formatter_format_md(self, tmp_path):
+    def test_dir_result_respects_formatter_format_md(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
@@ -240,12 +235,10 @@ class TestSummaryFormatterIntegration:
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, fmt="md"))
 
-        assert (tmp_path / f"{tmp_path.name}_sum.md").exists()
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-        assert (tmp_path / f"{tmp_path.name}_concat.md").exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        assert _dir_result(tmp_path, "md").exists()
+        assert not _dir_result(tmp_path, "txt").exists()
 
-    def test_summary_respects_formatter_format_html(self, tmp_path):
+    def test_dir_result_respects_formatter_format_html(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
@@ -254,7 +247,7 @@ class TestSummaryFormatterIntegration:
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, fmt="html"))
 
-        assert (tmp_path / f"{tmp_path.name}_sum.html").exists()
-        assert not (tmp_path / f"{tmp_path.name}_sum.txt").exists()
-        assert (tmp_path / f"{tmp_path.name}_concat.html").exists()
-        assert not (tmp_path / f"{tmp_path.name}_concat.txt").exists()
+        html = _dir_result(tmp_path, "html")
+        assert html.exists()
+        assert not _dir_result(tmp_path, "txt").exists()
+        assert "<h1>" in html.read_text(encoding="utf-8")

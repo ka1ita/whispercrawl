@@ -49,8 +49,8 @@ def _config(
 
 
 def _transcripts(tmp_path: Path) -> set[str]:
-    """Per-file transcript outputs, excluding the per-directory _concat.txt."""
-    return {p.name for p in tmp_path.glob("*.txt") if not p.stem.endswith("_concat")}
+    """Per-file result outputs, excluding the per-directory consolidated result."""
+    return {p.name for p in tmp_path.glob("*.txt") if p.stem != tmp_path.name}
 
 
 def _make_files(tmp_path: Path, names: list[str]) -> None:
@@ -166,8 +166,10 @@ class TestStepResume:
 
         assert transcribe_calls == ["a.mp3"]
         assert postprocess_calls == ["a.mp3"]
-        assert (tmp_path / "a.txt").exists()
+        # a failed step → nothing beside the audio except the error file
+        assert not (tmp_path / "a.txt").exists()
         assert not (tmp_path / "a_fix.txt").exists()
+        assert (tmp_path / "a_err.txt").exists()
 
         def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
             postprocess_calls.append(source_path.name)
@@ -177,9 +179,10 @@ class TestStepResume:
              patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
             run_pipeline(cfg)
 
-        assert transcribe_calls == ["a.mp3"]  # not called again — resumed from disk
+        assert transcribe_calls == ["a.mp3"]  # not called again — resumed from the index
         assert postprocess_calls == ["a.mp3", "a.mp3"]
-        assert (tmp_path / "a_fix.txt").exists()
+        assert (tmp_path / "a.txt").exists()  # consolidated result now complete
+        assert not (tmp_path / "a_fix.txt").exists()
 
     def test_resume_after_summarize_failure_does_not_repostprocess(self, tmp_path: Path):
         _make_files(tmp_path, ["a.mp3"])
@@ -214,6 +217,7 @@ class TestStepResume:
         assert postprocess_calls == ["a.mp3"]
         assert summarize_calls == ["a.mp3"]
         assert not (tmp_path / "a_sum.txt").exists()
+        assert not (tmp_path / "a.txt").exists()
 
         def ok_summarize(self, text: str, file: str = "") -> str:
             summarize_calls.append(file)
@@ -225,9 +229,9 @@ class TestStepResume:
             run_pipeline(cfg)
 
         assert transcribe_calls == ["a.mp3"]      # not re-run
-        assert postprocess_calls == ["a.mp3"]     # not re-run
+        assert postprocess_calls == ["a.mp3"]     # not re-run (stored fixed text reused)
         assert summarize_calls == ["a.mp3", "a.mp3"]
-        assert (tmp_path / "a_sum.txt").exists()
+        assert (tmp_path / "a.txt").exists()
 
     def test_source_file_change_between_attempts_discards_recorded_step(self, tmp_path: Path):
         _make_files(tmp_path, ["a.mp3"])

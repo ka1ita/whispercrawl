@@ -161,7 +161,9 @@ class TestPerStepFailureIsolation:
 
         assert ("summarize", "a.mp3") in calls
         assert (tmp_path / "a_err.txt").exists()
-        assert (tmp_path / "a_sum.txt").exists()
+        # a failed step → no consolidated result and no legacy sidecars
+        assert not (tmp_path / "a.txt").exists()
+        assert not (tmp_path / "a_sum.txt").exists()
         assert not (tmp_path / "a_fix.txt").exists()
 
 
@@ -178,18 +180,15 @@ class TestIdenticalOutput:
             )
             with p1, p2, p3:
                 run_pipeline(_config(d, processing_mode=mode))
-            # the per-directory concat file is named after the containing dir, which
+            # the per-directory result is named after the containing dir, which
             # differs per mode here; normalize that key so only content is compared
             outputs[mode] = {
-                p.name.replace(mode, "<dir>"): p.read_text()
+                p.name.replace(mode, "<dir>"): p.read_text(encoding="utf-8")
                 for p in sorted(d.glob("*.txt"))
             }
 
         assert outputs["per_file"] == outputs["per_step"]
-        assert set(outputs["per_file"]) == {
-            "a.txt", "a_fix.txt", "a_sum.txt", "b.txt", "b_fix.txt", "b_sum.txt",
-            "<dir>_concat.txt",
-        }
+        assert set(outputs["per_file"]) == {"a.txt", "b.txt", "<dir>.txt"}
 
 
 class TestPerStepResume:
@@ -213,7 +212,7 @@ class TestPerStepResume:
         with p1, p2, p3:
             run_pipeline(_config(tmp_path, processing_mode="per_step"))
         assert transcribe_calls == [("transcribe", "a.mp3")]  # not called again
-        assert (tmp_path / "a_fix.txt").exists()
+        assert (tmp_path / "a.txt").exists()  # consolidated result now complete
 
 
 class TestMaxFilesPerRunUnderPerStep:

@@ -4,24 +4,48 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-048: Multiple ASR Engines — Parallel Transcription, Per-Engine Results
+
+_Depends on EPIC-046 (landed) and EPIC-047 (landed)._
+
+- [x] `config.py`: `TranscriptionConfig.name` / `.engines`; `load_config` merges each `engines:` entry onto the top-level `transcription:` block and resolves `config.transcription.engines` to a non-empty list (no `engines:` → `[block name=""]`) (EPIC-048, 2026-09-01)
+- [x] `config.py`: validation — engine `name` matches `^[A-Za-z0-9._-]+$`, unique, non-empty when `engines:` is given → else `ValueError`; `engine_label(name)` helper (EPIC-048, 2026-09-01)
+- [x] `state.py`: `SCHEMA_VERSION` → `"4"`; `asr_results(path, engine, kind, text, mtime, size)` table via `CREATE TABLE IF NOT EXISTS` (auto-added to v3 DBs); the implicit engine keeps the `files.asr_text`/`fixed_text` columns — zero data migration (EPIC-048, 2026-09-01)
+- [x] `state.py`: `save_text` / `get_text` / `mark_step` / `completed_steps` gain `engine=""`; named-engine step tokens `step:<engine>`; mtime/size-mismatch reset also `DELETE FROM asr_results WHERE path=?`; `forget` / `clear` clear it too; `NullState` signatures updated (EPIC-048, 2026-09-01)
+- [x] `main.py`: `_finalize_file` records `files.status` `done` only when every engine's context succeeded, else `error` with the failed engine names in `detail` (EPIC-048, 2026-09-01)
+- [x] `main.py`: one `Transcriber` per engine (per-engine `diarize/<name>/` dir); `_transcribe_file` → list of per-engine contexts (`engine`, `elabel`, …); stored-ASR reuse and `save_text` keyed by engine (EPIC-048, 2026-09-01)
+- [x] `main.py`: `engine` threaded through `_postprocess_one` / `_summarize_one` / `_finalize_one` — `output_path` / `save_text` / `mark_step` / error file all use `elabel + suffix`; `<stem>_<engine>_err.txt`; one engine failing does not block the others (EPIC-048, 2026-09-01)
+- [x] `main.py`: `per_file` = file → engine → all steps; `per_step` = step → all `(file, engine)` pairs; `_finalize_file` runs once per file after the last engine (EPIC-048, 2026-09-01)
+- [x] `main.py` per-directory: `dir_file_texts[dir][engine][filename]`; per engine build concat + optional summary + composed result → `{prefix}<dirname><elabel>.<ext>`; dir error `<dirname>_<engine>_err.txt` (EPIC-048, 2026-09-01)
+- [x] `main.py` `--refresh`: loops engines; `state.get_text(rel, "asr", …, engine)` `None` → INFO skip that engine (others refresh); a file with no engine text leaves the index untouched, no `_err.txt`; `mark_step` per engine on success (EPIC-048, 2026-09-01)
+- [x] `pipeline/transcriber.py`: no change — the per-engine `diarize_dir` is passed from `main.py` (`<log_dir>/diarize/<name>/`) (EPIC-048, 2026-09-01)
+- [x] `pipeline/cleaner.py` / `run_cleanup` / `iter_media_files`: iterate `engine_labels` — `Cleaner.clean` / `clean_other_formats` and `run_cleanup` remove `<stem><label><suffix>.<ext>` + `{prefix}<dirname><label>.<ext>`; back-fill requires all engines' outputs present (EPIC-048, 2026-09-01)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: commented `engines:` example under the flat `transcription:` base (EPIC-048, 2026-09-01)
+- [x] Docs — `CLAUDE.md` Key Conventions, `docs/architecture/overview.md`, `ADR-004-multiple-asr-engines.md` (EPIC-048, 2026-09-01)
+- [x] Tests — `tests/test_config.py` `TestTranscriptionEngines`: no `engines:` → one `name==""`; merge + override; duplicate / unsafe / empty-name-with-list → `ValueError` (EPIC-048, 2026-09-01)
+- [x] Tests — `tests/test_state.py` `TestPerEngineText`: two engines independent; mtime mismatch → `None`; per-engine step tokens; reset drops all engines; v3 DB gains `asr_results` (EPIC-048, 2026-09-01)
+- [x] Tests — `tests/test_multi_engine.py` (new, 10): two per-file + two per-dir results; per-engine index text; single unnamed engine unlabelled; engine failure isolation + retry-only-failed; `--refresh` per engine + skip missing-text engine; `per_step` == `per_file`; `--cleanup` removes every engine's outputs (EPIC-048, 2026-09-01)
+
+---
+
 ## EPIC-047: One Consolidated Result File Per Audio File and Per Directory
 
 _Depends on EPIC-046 (text stored in the index)._
 
-- [ ] `config.py`: add `ResultConfig` (`file_sections`, `dir_sections`, `summary_heading`, `transcript_heading`, `heading_level`, `separator`, `include_missing_headings`); add `result: ResultConfig` to `Config`; validate section names against `{"summary","transcript"}` in `load_config` (EPIC-047)
-- [ ] `pipeline/composer.py` (new): `compose(sections, cfg) -> str` — join `(heading, body)` blocks as markdown `# heading` + body, `cfg.separator` between, skip empty bodies / missing headings per config (EPIC-047)
-- [ ] `pipeline/formatter.py`: recognise `^#{1,6}\s+` headings and `^---+$` rules — `html` → `<h1..6>` / `<hr>`, `md`/`txt` passthrough; never fall back to `<pre>` when any section is present; speaker styling still applies to transcript lines (EPIC-047)
-- [ ] `main.py` per-file: drop the `_fix` and `_sum` sidecars; build the result via `composer.compose([("summary", summary), ("transcript", body)], ...)` → write `<file>.txt` → `formatter.format_file`; `body` = fixed text if postprocessing ran else raw transcript (EPIC-047)
-- [ ] `main.py`: retire `postprocessing.replace_transcription` — parse it as a deprecated no-op with a WARNING (EPIC-047)
-- [ ] `main.py` per-dir: replace `_<dirname>_all` + `_<dirname>_sum` with one `_<dirname>.<ext>` = `composer.compose([("summary", dir_summary), ("transcript", concat)], sections=cfg.dir_sections)`; retire `dir_summarization.concat_suffix` / `output_suffix` as deprecated no-ops (EPIC-047)
-- [ ] `main.py` per-step resume: `file_summarize` resume path sources the summary from the index (add `"summary"` kind to EPIC-046 `get_text`) or recomputes — decide in impl (EPIC-047)
-- [ ] `pipeline/cleaner.py` / `run_cleanup`: add legacy labels (`_fix`, `_sum`, `_all`, `_concat`) to default `CleanupConfig.targets` + `clean_other_formats`; `run_cleanup` also removes `<file>_diarize.json` under the audio tree (EPIC-047)
-- [ ] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: add `result:` section (RU headings) with comments; remove/deprecate `replace_transcription`, `file_summarization.output_suffix`, `dir_summarization.concat_suffix` / `output_suffix`; add legacy labels to `cleanup.targets`; update pipeline comments (EPIC-047)
-- [ ] Docs — `CLAUDE.md` (Processing Pipeline + Key Conventions), `docs/architecture/overview.md` (redraw output boxes, document composer + `ResultConfig`), new ADR for consolidating outputs and dropping `replace_transcription` (EPIC-047)
-- [ ] Tests — `tests/test_composer.py` (new): section ordering; empty section omitted; `include_missing_headings`; custom headings / separator / level (EPIC-047)
-- [ ] Tests — `tests/test_formatter.py`: `# Heading` → `<h1>` (html) / passthrough (md/txt); `---` → `<hr>`; composed doc (summary prose + speaker transcript) → headings + `<p>` + styled speaker lines, never `<pre>` (EPIC-047)
-- [ ] Tests — pipeline: successful file run leaves only `<file>.<ext>` = summary + transcript in order; `llm_enabled: false` variants; dir run leaves only `_<dirname>.<ext>` = summary + concat; `--cleanup` sweeps legacy files; `replace_transcription: true` → WARNING + unchanged output; `--refresh` regenerates composed results (EPIC-047)
-- [ ] Tests — `tests/test_config.py`: `ResultConfig` defaults; invalid section name → `ValueError`; deprecated fields parse without error (EPIC-047)
+- [x] `config.py`: `ResultConfig` already present; added `result: ResultConfig` to `Config`; `load_config` validates section names against `{"summary","transcript"}` and `heading_level` 1–6; deprecated-field WARNINGs (EPIC-047, 2026-09-01)
+- [x] `pipeline/composer.py`: `compose(sections, bodies, headings, cfg)` — `# heading` + body blocks, `cfg.separator` between, single surviving section emitted bare, `include_missing_headings` honored (EPIC-047, 2026-09-01)
+- [x] `pipeline/formatter.py`: `_HEADING_RE` / `_HR_RE` — `html` → `<h1..6>` / `<hr>`, `md`/`txt` passthrough; `<pre>` fallback only when neither speakers nor headings present; speaker styling still applies (EPIC-047, 2026-09-01)
+- [x] `main.py` per-file: dropped `_fix` / `_sum` sidecars; `_finalize_one` composes `<file>.txt` from `{summary, transcript-body}` → deferred `formatter.format_file`; body = fixed text if postprocessing ran else raw transcript (EPIC-047, 2026-09-01)
+- [x] `main.py`: `replace_transcription` branching removed from `_postprocess_one`; field still parses, `load_config` WARNs (EPIC-047, 2026-09-01)
+- [x] `main.py` per-dir: one `{prefix}<dirname>.<ext>` = `compose(dir_sections, {summary, concat})`; `_all`/`_sum` sidecars gone; `run_cleanup` concat_suffix special-case removed (EPIC-047, 2026-09-01)
+- [x] `main.py` per-step resume: `_summarize_one` recomputes the summary on resume (one Ollama call, cheap vs ASR); no `"summary"` index kind (EPIC-047, 2026-09-01)
+- [x] `config.py` `CleanupConfig.targets` default gains `_all` / `_concat`; `clean_other_formats` is config-driven so picks them up; `run_cleanup` removes `_diarize.json` via the `.json` target (EPIC-047, 2026-09-01)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: `result:` section (RU headings); deprecated `replace_transcription` / `output_suffix` / `concat_suffix` commented out; `cleanup.targets` gains `_concat`/`_all`; pipeline comments updated (EPIC-047, 2026-09-01)
+- [x] Docs — `CLAUDE.md` (Processing Pipeline + Key Conventions), `docs/architecture/overview.md` (pipeline table + `ResultConfig`), `ADR-003-consolidated-result-file.md`, `deploy/*/DEPLOY.md` upgrade note (EPIC-047, 2026-09-01)
+- [x] Tests — `tests/test_composer.py` (new, 12): section ordering / bare single section / `include_missing_headings` / custom headings / separator / level / sections filter (EPIC-047, 2026-09-01)
+- [x] Tests — `tests/test_formatter.py` `TestComposedResultStructure`: `# Heading` → `<h1>` / passthrough; `---` → `<hr>`; composed doc → headings + `<p>` + styled speaker lines, never `<pre>` (EPIC-047, 2026-09-01)
+- [x] Tests — pipeline: `test_output_format.py` `TestConsolidatedFileResult`; `test_pipeline/test_dir_concat.py` rewritten for the one dir result; `test_processing_mode.py` / `test_processing_index.py` / `test_postprocessor.py` / `test_refresh.py` updated; `test_cleanup_cli.py` `TestSweepsLegacySidecars` (EPIC-047, 2026-09-01)
+- [x] Tests — `tests/test_config.py` `TestResultConfig`: defaults; invalid section / heading_level → `ValueError`; deprecated fields parse without error (EPIC-047, 2026-09-01)
 
 ---
 

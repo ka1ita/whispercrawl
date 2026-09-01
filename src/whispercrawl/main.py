@@ -5,7 +5,7 @@ import argparse
 import logging
 from pathlib import Path
 
-from whispercrawl.config import Config, load_config
+from whispercrawl.config import Config, engine_label, load_config
 from whispercrawl.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
     """Delete pipeline output files under watch_dir without running the pipeline."""
     fmt = config.formatter.format
     targets = config.cleanup.targets
+    elabels = [engine_label(e.name) for e in (config.transcription.engines or [config.transcription])]
     removed = 0
 
     for media_path in sorted(config.watch_dir.rglob("*")):
@@ -62,19 +63,20 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
             continue
         if media_path.suffix.lower() not in config.extensions:
             continue
-        for suffix in targets:
-            out = (
-                media_path.with_name(media_path.stem + suffix)
-                if suffix.endswith(".json")
-                else output_path(media_path, suffix, fmt)
-            )
-            if out.exists():
-                if dry_run:
-                    logger.info("Would clean: %s", out)
-                else:
-                    out.unlink()
-                    logger.info("Cleaned: %s", out)
-                removed += 1
+        for label in elabels:
+            for suffix in targets:
+                out = (
+                    media_path.with_name(media_path.stem + suffix)
+                    if suffix.endswith(".json")
+                    else output_path(media_path, label + suffix, fmt)
+                )
+                if out.exists():
+                    if dry_run:
+                        logger.info("Would clean: %s", out)
+                    else:
+                        out.unlink()
+                        logger.info("Cleaned: %s", out)
+                    removed += 1
 
     # Also remove per-directory summary files found alongside media files
     dirs_seen: set[Path] = {
@@ -83,17 +85,16 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
         if p.is_file() and p.suffix.lower() in config.extensions
     }
     dir_prefix = "_" if config.dir_summarization.underscore_prefix else ""
-    concat_suffix = config.dir_summarization.concat_suffix
     for dir_path in sorted(dirs_seen):
-        for suffix in targets:
-            dir_base = dir_path / (dir_prefix + dir_path.name)
-            if suffix.endswith(".json"):
-                dir_sum = dir_path / (dir_path.name + suffix)
-            elif suffix == concat_suffix:
-                dir_sum = output_path(dir_base, suffix, fmt)
-            else:
-                dir_sum = output_path(dir_base, suffix, fmt)
-            if dir_sum.exists():
+        for label in elabels:
+            for suffix in targets:
+                if suffix.endswith(".json"):
+                    dir_sum = dir_path / (dir_path.name + suffix)
+                else:
+                    dir_base = dir_path / (dir_prefix + dir_path.name + label)
+                    dir_sum = output_path(dir_base, suffix, fmt)
+                if not dir_sum.exists():
+                    continue
                 if dry_run:
                     logger.info("Would clean: %s", dir_sum)
                 else:
@@ -168,12 +169,14 @@ def run_pipeline(
 def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: bool = False) -> None:
     from whispercrawl.file_walker import iter_media_files
     from whispercrawl.pipeline.cleaner import Cleaner
+    from whispercrawl.pipeline.composer import compose
     from whispercrawl.pipeline.formatter import Formatter
     from whispercrawl.pipeline.postprocessor import PostProcessor, PostProcessingError
     from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
     from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
     from whispercrawl.utils.service_logger import ServiceLogger
 
+    _engines = config.transcription.engines or [config.transcription]
     files = list(iter_media_files(
         config.watch_dir,
         config.extensions,
@@ -184,6 +187,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         config.max_age_days,
         state,
         ignore_processed=refresh,
+        engine_labels=[engine_label(e.name) for e in _engines],
     ))
 
     if config.max_files_per_run is not None and len(files) > config.max_files_per_run:
@@ -195,7 +199,10 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         )
 
     fmt = config.formatter.format
-    cleaner = Cleaner(config.cleanup, fmt)
+    cleaner = Cleaner(
+        config.cleanup, fmt,
+        engine_labels=[engine_label(e.name) for e in _engines],
+    )
     _rescan_labels = [s for s in config.cleanup.targets if not s.endswith(".json")]
 
     if dry_run:
@@ -217,15 +224,21 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         if fst is not None:
             state.mark(rel, status, fst.st_mtime, fst.st_size, detail)
 
+
+    engines = config.transcription.engines or [config.transcription]
+
     _log_base = Path(config.logging.log_dir) if config.logging.log_dir else config.watch_dir / "logs"
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:
-        transcriber = Transcriber(
-            config.transcription,
-            svc_log,
-            config.logging.diarize_log,
-            diarize_dir=_log_base / "diarize",
-            watch_dir=config.watch_dir,
-        )
+        transcribers = {
+            eng.name: Transcriber(
+                eng,
+                svc_log,
+                config.logging.diarize_log,
+                diarize_dir=(_log_base / "diarize" / eng.name) if eng.name else (_log_base / "diarize"),
+                watch_dir=config.watch_dir,
+            )
+            for eng in engines
+        }
         postprocessor = (
             PostProcessor(config.postprocessing, config.postprocessing.regex_patterns, svc_log)
             if config.postprocessing.llm_enabled or config.postprocessing.regex_enabled else None
@@ -236,146 +249,131 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         )
         dir_summarizer = Summarizer(config.dir_summarization, svc_log)
 
-        # dir_path → {filename: [transcript, fixed_text_or_None]}
-        dir_file_texts: dict[Path, dict[str, list]] = {}
+        # dir_path → engine → {filename: [transcript, fixed_text_or_None]}
+        dir_file_texts: dict[Path, dict[str, dict[str, list]]] = {}
         all_outputs_to_format: list[Path] = []
+        # file_path → {engine: success_bool} accumulated across engines
+        file_engine_ok: dict[Path, dict[str, bool]] = {}
+        file_meta: dict[Path, tuple] = {}   # file_path → (rel, fst)
+        _headings = {
+            "summary": config.result.summary_heading,
+            "transcript": config.result.transcript_heading,
+        }
 
-        def _transcribe_one(file_path: Path) -> dict:
-            """Run/resume the transcribe step. Returns a per-file context dict; ctx["ok"]
-            is False (with no other keys) when transcription failed and the file must be
-            skipped entirely."""
+        def _transcribe_file(file_path: Path) -> list:
+            """Run/resume the transcribe step for every engine. Returns one context
+            dict per engine that produced a transcript (a failed / skipped engine is
+            simply absent from the list)."""
             logger.info("Processing: %s", file_path)
             rel = str(file_path.relative_to(config.watch_dir))
             try:
                 fst = file_path.stat()
             except OSError:
                 fst = None
+            file_meta[file_path] = (rel, fst)
+            file_engine_ok.setdefault(file_path, {})
 
             if config.rescan:
                 cleaner.clean_other_formats(file_path, _rescan_labels)
 
+            contexts = []
+            for eng in engines:
+                ctx = _transcribe_engine(file_path, rel, fst, eng)
+                if ctx is not None:
+                    contexts.append(ctx)
+            return contexts
+
+        def _transcribe_engine(file_path: Path, rel: str, fst, eng) -> "dict | None":
+            name = eng.name
+            elabel = engine_label(name)
+            tag = f"{file_path} [{name}]" if name else str(file_path)
+
             resume_steps: set = set()
             if not config.rescan and not refresh and fst is not None:
-                resume_steps = state.completed_steps(rel, fst.st_mtime, fst.st_size)
-
-            txt_path = output_path(file_path, config.transcription.output_suffix, "txt")
+                resume_steps = state.completed_steps(rel, fst.st_mtime, fst.st_size, name)
 
             stored_asr = None
             if fst is not None and (refresh or "transcribe" in resume_steps):
-                stored_asr = state.get_text(rel, "asr", fst.st_mtime, fst.st_size)
+                stored_asr = state.get_text(rel, "asr", fst.st_mtime, fst.st_size, name)
 
             if refresh:
                 if stored_asr is None:
-                    logger.info(
-                        "Refresh: no stored ASR text for %s — run a normal pass first; skipping",
-                        file_path,
-                    )
-                    return {"ok": False}
+                    logger.info("Refresh: no stored ASR text for %s — skipping this engine", tag)
+                    return None
                 transcript = stored_asr
-                txt_path.write_text(transcript, encoding="utf-8")
-                if fst is not None:
-                    state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size)
-                logger.info("Refreshing from stored ASR text: %s", file_path)
-            elif "transcribe" in resume_steps and (stored_asr is not None or txt_path.exists()):
-                transcript = stored_asr if stored_asr is not None else txt_path.read_text(encoding="utf-8")
-                if not txt_path.exists():
-                    txt_path.write_text(transcript, encoding="utf-8")
-                logger.info("Resuming: transcript already present: %s", txt_path)
+                logger.info("Refreshing from stored ASR text: %s", tag)
+            elif "transcribe" in resume_steps and stored_asr is not None:
+                transcript = stored_asr
+                logger.info("Resuming: using stored ASR transcript for %s", tag)
             else:
                 try:
-                    transcript = transcriber.transcribe(file_path)
+                    transcript = transcribers[name].transcribe(file_path)
                 except TranscriptionError as e:
-                    logger.error("Transcription failed for %s: %s", file_path, e)
-                    _write_error(file_path, config.transcription.error_suffix, str(e))
-                    if cleanup:
-                        cleaner.clean(file_path, success=False)
-                    _record(rel, fst, "error", "transcription failed")
-                    return {"ok": False}
+                    logger.error("Transcription failed for %s: %s", tag, e)
+                    _write_error(file_path, elabel + eng.error_suffix, str(e))
+                    file_engine_ok[file_path][name] = False
+                    return None
                 except (KeyboardInterrupt, SystemExit):
                     _record(rel, fst, "partial", "interrupted mid-pipeline")
                     raise
 
-                txt_path.write_text(transcript, encoding="utf-8")
-                logger.info("Transcript written: %s", txt_path)
+                logger.info("Transcribed: %s", tag)
                 if fst is not None:
-                    state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size)
+                    state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size, name)
                     if config.state.store_text:
-                        state.save_text(rel, "asr", transcript, fst.st_mtime, fst.st_size)
+                        state.save_text(rel, "asr", transcript, fst.st_mtime, fst.st_size, name)
 
-            # Track per-dir texts for concatenation step; entry is [transcript, fixed_text]
-            dir_file_texts.setdefault(file_path.parent, {})[file_path.name] = [transcript, None]
-
+            dir_file_texts.setdefault(file_path.parent, {}).setdefault(name, {})[file_path.name] = [
+                transcript, None
+            ]
             return {
-                "ok": True,
+                "engine": name,
+                "elabel": elabel,
                 "rel": rel,
                 "fst": fst,
                 "resume_steps": resume_steps,
                 "transcript": transcript,
                 "fixed_text": None,
-                "txt_path": txt_path,
-                "files_to_format": [txt_path],
+                "summary": "",
                 "success": True,
             }
 
         def _postprocess_one(file_path: Path, ctx: dict) -> None:
             if not postprocessor:
                 return
-            rel, fst, resume_steps = ctx["rel"], ctx["fst"], ctx["resume_steps"]
-            transcript, txt_path = ctx["transcript"], ctx["txt_path"]
-            fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
+            rel, fst, resume_steps, eng = ctx["rel"], ctx["fst"], ctx["resume_steps"], ctx["engine"]
+            transcript = ctx["transcript"]
             stored_fixed = (
-                state.get_text(rel, "fixed", fst.st_mtime, fst.st_size)
+                state.get_text(rel, "fixed", fst.st_mtime, fst.st_size, eng)
                 if fst is not None and "postprocess" in resume_steps else None
             )
-            resumed_postprocess = "postprocess" in resume_steps and (
-                stored_fixed is not None
-                or (fix_path.exists() if not config.postprocessing.replace_transcription else True)
-            )
-            if resumed_postprocess:
-                if stored_fixed is not None:
-                    fixed_text = stored_fixed
-                elif config.postprocessing.replace_transcription:
-                    fixed_text = transcript
-                else:
-                    fixed_text = fix_path.read_text(encoding="utf-8")
-                dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
-                if not config.postprocessing.replace_transcription:
-                    ctx["files_to_format"].append(fix_path)
-                logger.info("Resuming: post-processed text already present for %s", file_path)
-                ctx["fixed_text"] = fixed_text
+            if stored_fixed is not None:
+                ctx["fixed_text"] = stored_fixed
+                dir_file_texts[file_path.parent][eng][file_path.name][1] = stored_fixed
+                logger.info("Resuming: using stored post-processed text for %s", file_path)
                 return
 
             try:
                 fixed_text = postprocessor.process(transcript, source_path=file_path)
-                fix_path.write_text(fixed_text, encoding="utf-8")
-                dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
-                if config.postprocessing.replace_transcription:
-                    fix_path.replace(txt_path)
-                    logger.info("Replaced transcript with post-processed: %s", txt_path)
-                else:
-                    ctx["files_to_format"].append(fix_path)
-                    logger.info("Post-processed: %s", fix_path)
-                if fst is not None:
-                    state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size)
-                    if config.state.store_text:
-                        state.save_text(rel, "fixed", fixed_text, fst.st_mtime, fst.st_size)
-                ctx["fixed_text"] = fixed_text
             except PostProcessingError as e:
                 logger.error("Post-processing failed for %s: %s", file_path, e)
-                _write_error(file_path, config.postprocessing.error_suffix, str(e))
+                _write_error(file_path, ctx["elabel"] + config.postprocessing.error_suffix, str(e))
                 ctx["success"] = False
+                return
+
+            ctx["fixed_text"] = fixed_text
+            dir_file_texts[file_path.parent][eng][file_path.name][1] = fixed_text
+            logger.info("Post-processed: %s", file_path)
+            if fst is not None:
+                state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size, eng)
+                if config.state.store_text:
+                    state.save_text(rel, "fixed", fixed_text, fst.st_mtime, fst.st_size, eng)
 
         def _summarize_one(file_path: Path, ctx: dict) -> None:
             if not file_summarizer:
                 return
-            rel, fst, resume_steps = ctx["rel"], ctx["fst"], ctx["resume_steps"]
+            rel, fst, eng = ctx["rel"], ctx["fst"], ctx["engine"]
             transcript, fixed_text = ctx["transcript"], ctx["fixed_text"]
-            sum_path = output_path(file_path, config.file_summarization.output_suffix, "txt")
-            if "file_summarize" in resume_steps and sum_path.exists():
-                ctx["files_to_format"].append(sum_path)
-                logger.info("Resuming: file summary already present: %s", sum_path)
-                return
-
             summary_input = _pick_summary_input(
                 config.file_summarization.summarize_source,
                 transcript,
@@ -384,87 +382,124 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             )
             try:
                 summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
-                sum_path.write_text(summary, encoding="utf-8")
-                ctx["files_to_format"].append(sum_path)
-                logger.info("File summary written: %s", sum_path)
-                if fst is not None:
-                    state.mark_step(rel, "file_summarize", fst.st_mtime, fst.st_size)
             except SummarizationError as e:
                 logger.error("File summarization failed for %s: %s", file_path, e)
-                _write_error(file_path, config.file_summarization.error_suffix, str(e))
+                _write_error(file_path, ctx["elabel"] + config.file_summarization.error_suffix, str(e))
                 ctx["success"] = False
+                return
+
+            ctx["summary"] = summary
+            logger.info("Summarized: %s", file_path)
+            if fst is not None:
+                state.mark_step(rel, "file_summarize", fst.st_mtime, fst.st_size, eng)
 
         def _finalize_one(file_path: Path, ctx: dict) -> None:
-            all_outputs_to_format.extend(ctx["files_to_format"])
             success = ctx["success"]
-            if cleanup:
-                cleaner.clean(file_path, success)
+            rel, fst, eng = ctx["rel"], ctx["fst"], ctx["engine"]
             if success:
-                err_path = output_path(file_path, config.transcription.error_suffix, "txt")
-                if err_path.exists():
-                    err_path.unlink()
-                    logger.debug("Removed stale error file: %s", err_path)
-            _record(ctx["rel"], ctx["fst"], "done" if success else "error",
-                    "" if success else "pipeline step failed")
+                body = ctx["fixed_text"] if ctx["fixed_text"] is not None else ctx["transcript"]
+                document = compose(
+                    config.result.file_sections,
+                    {"summary": ctx["summary"], "transcript": body},
+                    _headings,
+                    config.result,
+                )
+                result_path = output_path(
+                    file_path, ctx["elabel"] + config.transcription.output_suffix, "txt"
+                )
+                result_path.write_text(document, encoding="utf-8")
+                all_outputs_to_format.append(result_path)
+                logger.info("Result written: %s", result_path)
+                if refresh and fst is not None:
+                    for _s in ("transcribe", "postprocess", "file_summarize"):
+                        state.mark_step(rel, _s, fst.st_mtime, fst.st_size, eng)
+            file_engine_ok[file_path][eng] = success
+
+        def _finalize_file(file_path: Path) -> None:
+            rel, fst = file_meta[file_path]
+            results = file_engine_ok.get(file_path, {})
+            if not results:
+                # nothing ran for any engine (e.g. --refresh with no stored text) —
+                # leave the index untouched and write no _err.txt
+                return
+            all_ok = all(results.values())
+            if cleanup:
+                cleaner.clean(file_path, all_ok)
+            if all_ok:
+                for eng in engines:
+                    err_path = output_path(
+                        file_path, engine_label(eng.name) + config.transcription.error_suffix, "txt"
+                    )
+                    if err_path.exists():
+                        err_path.unlink()
+                        logger.debug("Removed stale error file: %s", err_path)
+            failed = [e or "(default)" for e, ok in results.items() if not ok]
+            _record(rel, fst, "done" if all_ok else "error",
+                    "" if all_ok else f"pipeline step failed for engine(s): {', '.join(failed)}")
 
         if config.processing_mode == "per_step":
-            contexts: dict[Path, dict] = {}
+            pairs: list = []
             for file_path in files:
-                ctx = _transcribe_one(file_path)
-                if ctx["ok"]:
-                    contexts[file_path] = ctx
-            for file_path, ctx in contexts.items():
+                for ctx in _transcribe_file(file_path):
+                    pairs.append((file_path, ctx))
+            for file_path, ctx in pairs:
                 _postprocess_one(file_path, ctx)
-            for file_path, ctx in contexts.items():
+            for file_path, ctx in pairs:
                 _summarize_one(file_path, ctx)
-            for file_path, ctx in contexts.items():
+            for file_path, ctx in pairs:
                 _finalize_one(file_path, ctx)
+            for file_path in files:
+                if file_path in file_meta:
+                    _finalize_file(file_path)
         else:
             for file_path in files:
-                ctx = _transcribe_one(file_path)
-                if not ctx["ok"]:
-                    continue
-                _postprocess_one(file_path, ctx)
-                _summarize_one(file_path, ctx)
-                _finalize_one(file_path, ctx)
+                for ctx in _transcribe_file(file_path):
+                    _postprocess_one(file_path, ctx)
+                    _summarize_one(file_path, ctx)
+                    _finalize_one(file_path, ctx)
+                if file_path in file_meta:
+                    _finalize_file(file_path)
 
         prefix = "_" if config.dir_summarization.underscore_prefix else ""
         for dir_path in sorted(dir_file_texts):
-            dir_base = dir_path / (prefix + dir_path.name)
-            dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
-            try:
-                selected = {
-                    name: _pick_summary_input(
-                        config.dir_summarization.concat_source,
-                        entry[0],
-                        entry[1],
-                        name,
+            for eng_name in sorted(dir_file_texts[dir_path]):
+                elabel = engine_label(eng_name)
+                dir_base = dir_path / (prefix + dir_path.name + elabel)
+                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
+                try:
+                    selected = {
+                        name: _pick_summary_input(
+                            config.dir_summarization.concat_source,
+                            entry[0],
+                            entry[1],
+                            name,
+                        )
+                        for name, entry in dir_file_texts[dir_path][eng_name].items()
+                    }
+                    combined = dir_summarizer.concat_transcriptions(selected)
+
+                    dir_summary = ""
+                    if config.dir_summarization.llm_enabled:
+                        dir_summary = dir_summarizer.summarize_file(combined, file=str(dir_path.name))
+
+                    document = compose(
+                        config.result.dir_sections,
+                        {"summary": dir_summary, "transcript": combined},
+                        _headings,
+                        config.result,
                     )
-                    for name, entry in dir_file_texts[dir_path].items()
-                }
-                combined = dir_summarizer.concat_transcriptions(selected)
-                concat_path = dir_path / (prefix + dir_path.name + config.dir_summarization.concat_suffix + ".txt")
-                concat_path.write_text(combined, encoding="utf-8")
-                logger.info("Concatenated transcriptions written: %s", concat_path)
-                all_outputs_to_format.append(concat_path)
+                    dir_result_path = output_path(dir_base, "", "txt")
+                    dir_result_path.write_text(document, encoding="utf-8")
+                    all_outputs_to_format.append(dir_result_path)
+                    logger.info("Directory result written: %s", dir_result_path)
 
-                if config.dir_summarization.llm_enabled:
-                    dir_summary = dir_summarizer.summarize_file(combined, file=str(dir_path.name))
-                    dir_sum_path = output_path(dir_base, config.dir_summarization.output_suffix, "txt")
-                    dir_sum_path.write_text(dir_summary, encoding="utf-8")
-                    all_outputs_to_format.append(dir_sum_path)
-                    logger.info("Directory summary written: %s", dir_sum_path)
-
-                if dir_err_path.exists():
-                    dir_err_path.unlink()
-                    logger.debug("Removed stale error file: %s", dir_err_path)
-            except SummarizationError as e:
-                logger.error("Directory summarization failed for %s: %s", dir_path, e)
-                dir_err_path.write_text(str(e), encoding="utf-8")
-            finally:
-                # free this directory's transcripts; peak memory stays bounded
-                # by one directory (or by max_files_per_run) rather than the whole run
-                dir_file_texts.pop(dir_path, None)
+                    if dir_err_path.exists():
+                        dir_err_path.unlink()
+                        logger.debug("Removed stale error file: %s", dir_err_path)
+                except SummarizationError as e:
+                    logger.error("Directory summarization failed for %s: %s", dir_path, e)
+                    dir_err_path.write_text(str(e), encoding="utf-8")
+        dir_file_texts.clear()
 
         for path in all_outputs_to_format:
             if path.exists():
