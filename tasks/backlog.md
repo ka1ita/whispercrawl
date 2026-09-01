@@ -6,21 +6,21 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ## EPIC-043: Relocate the Processing Index to a Dedicated `db/` Directory
 
-- [ ] `state.py`: `STATE_DIRNAME = "db"` (was `".whispercrawl"`); add `LEGACY_STATE_DIRNAME = ".whispercrawl"`; `default_state_path(config_root)` returns `<config_root>/db/state.db` (EPIC-043)
-- [ ] `state.py` `open_state`: resolve default from config root; one-time best-effort migration — when the new path is absent but `<watch_dir>/.whispercrawl/state.db` exists, move `state.db` + `-wal`/`-shm` siblings to the new `db/` dir (log INFO), remove the empty legacy dir; on failure log WARNING and continue with a fresh DB (EPIC-043)
-- [ ] `config.py` `load_config`: resolve `state.path` default to `<config-file dir>/db/state.db` (anchored at the config file's directory, not `watch_dir`); explicit `state.path` still respected verbatim (EPIC-043)
-- [ ] `main.py`: `run_cleanup` uses `config.state.path` directly (drop the `default_state_path(config.watch_dir)` fallback); `open_state` call passes the already-resolved path (EPIC-043)
-- [ ] `file_walker.py`: exclude both `db` and `.whispercrawl` directory names from `rglob` traversal (EPIC-043)
-- [ ] `Dockerfile`: add `/db` to `VOLUME` (EPIC-043)
-- [ ] `deploy/prod/docker-compose.prod.yml`, `deploy/prod-local/docker-compose.prod-local.yml`: add `./db:/db:Z` mount to the `whispercrawl` service; `deploy/dev/docker-compose.dev.yml`: add `../../db:/db` (EPIC-043)
-- [ ] `deploy/prod/setup.sh`, `deploy/prod-local/setup.sh`: `mkdir -p`/`chmod 750`/`chown` `db` alongside `audio logs`; add `db` to the non-root `sudo chown` hint (EPIC-043)
-- [ ] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: update the commented `state.path` hint to `./db/state.db` / `/db/state.db` with `# default: <config dir>/db/state.db` (EPIC-043)
-- [ ] `.gitignore`: add `/db/` and `deploy/*/db/` (keep `**/.whispercrawl/`) (EPIC-043)
-- [ ] Docs — `docs/architecture/overview.md`, `CLAUDE.md`, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md`: new default location, the `/db` mount, the one-time auto-migration, and the updated excluded-directory name (EPIC-043)
-- [ ] Tests — `tests/test_state.py`: `default_state_path` shape; `open_state` migrates legacy DB + `-wal`/`-shm` with records intact and removes the empty legacy dir; no move when the new path exists; fresh DB when neither exists; migration failure → WARNING + fresh DB (EPIC-043)
-- [ ] Tests — `tests/test_config.py`: default `state.path` resolves under the config file's directory (not `watch_dir`); explicit `state.path` respected (EPIC-043)
-- [ ] Tests — `tests/test_file_walker.py`: `db/` under `watch_dir` skipped by traversal; legacy `.whispercrawl/` still skipped (regression) (EPIC-043)
-- [ ] Tests — `run_cleanup` clears the index at the new `db/state.db` location; integration: run with a seeded legacy `.whispercrawl/state.db` reprocesses nothing after migration (EPIC-043)
+- [x] `state.py`: `STATE_DIRNAME = "db"` (was `".whispercrawl"`); add `LEGACY_STATE_DIRNAME = ".whispercrawl"`; `default_state_path(config_root)` returns `<config_root>/db/state.db` (EPIC-043, 2026-09-01)
+- [x] `state.py` `_migrate_legacy_index` + `open_state`: `open_state(enabled, path, config_root, watch_dir=None)` resolves the default from `config_root`; one-time best-effort migration — when the new path is absent but `<watch_dir>/.whispercrawl/state.db` exists, move `state.db` + `-wal`/`-shm`/`-journal` siblings to the new `db/` dir (log INFO), remove the empty legacy dir; on `OSError` log WARNING and continue with a fresh DB (EPIC-043, 2026-09-01)
+- [x] `config.py` `load_config`: resolve `state.path` default to `<config-file dir>/db/state.db` via `default_state_path(Path(path).resolve().parent)` (anchored at the config file's directory, not `watch_dir`); explicit `state.path` still respected verbatim (EPIC-043, 2026-09-01)
+- [x] `main.py`: `run_pipeline` passes `watch_dir=config.watch_dir` to `open_state` for the migration probe; `run_cleanup` uses the already-resolved `config.state.path` (EPIC-043, 2026-09-01)
+- [x] `file_walker.py`: exclude both `STATE_DIRNAME` (`db`) and `LEGACY_STATE_DIRNAME` (`.whispercrawl`) directory names from `rglob` traversal (EPIC-043, 2026-09-01)
+- [x] `Dockerfile`: add `/db` to `VOLUME` (EPIC-043, 2026-09-01)
+- [x] `deploy/prod/docker-compose.prod.yml`, `deploy/prod-local/docker-compose.prod-local.yml`: add `./db:/db:Z` mount to the `whispercrawl` service; `deploy/dev/docker-compose.dev.yml`: add `../../db:/db` (EPIC-043, 2026-09-01)
+- [x] `deploy/prod/setup.sh`, `deploy/prod-local/setup.sh`: `mkdir -p`/`chmod 750`/`chown` `db` alongside `audio logs`; add `db` to the non-root `sudo chown` hint (EPIC-043, 2026-09-01)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: update the commented `state.path` hint to `./db/state.db` / `/db/state.db` with `# default: <config dir>/db/state.db` and an auto-migration note (EPIC-043, 2026-09-01)
+- [x] `.gitignore`: add `/db/` and `deploy/*/db/` (keep `**/.whispercrawl/`) (EPIC-043, 2026-09-01)
+- [x] Docs — `docs/architecture/overview.md`, `CLAUDE.md`, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md`: new default location, the `/db` mount, the one-time auto-migration, and the updated excluded-directory name (EPIC-043, 2026-09-01)
+- [x] Tests — `tests/test_state.py`: `default_state_path` shape; `open_state`/`_migrate_legacy_index` migrates legacy DB (+ `-wal`/`-shm`) with records intact and removes the empty legacy dir; no move when the new path exists; fresh DB when neither exists; migration failure → WARNING + fresh DB (EPIC-043, 2026-09-01)
+- [x] Tests — `tests/test_config.py`: default `state.path` resolves under the config file's directory (not `watch_dir`); explicit `state.path` respected (EPIC-043, 2026-09-01)
+- [x] Tests — `tests/test_file_walker.py`: `db/` under `watch_dir` skipped by traversal; legacy `.whispercrawl/` still skipped (regression) (EPIC-043, 2026-09-01)
+- [x] Tests — `tests/test_processing_index.py`: existing `--cleanup` / disabled-state / dry-run cases pass against the new `db/state.db` location (EPIC-043, 2026-09-01)
 
 ---
 

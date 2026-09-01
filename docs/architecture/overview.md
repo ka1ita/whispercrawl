@@ -32,7 +32,9 @@ Files are yielded **newest first** (by mtime). `max_age_days` bounds the scan to
 
 ### `state.py`
 
-Persisted index of processed files, backed by a single SQLite file at `<watch_dir>/.whispercrawl/state.db` (overridable via `state.path`; disable entirely with `state.enabled: false`). Each run records `done` / `error` per file so subsequent runs answer "already processed?" with an indexed lookup instead of up to three `exists()` probes per file, and an interrupted run resumes without redoing completed work. A file absent from the index but already carrying an output file is recorded as `done` on first sight — so enabling the index on an existing catalog reprocesses nothing. **Deleting `state.db` is safe**: the next run rebuilds it from whichever output files exist.
+Persisted index of processed files, backed by a single SQLite file at `<config dir>/db/state.db` — a dedicated `db/` directory beside `config.yaml` (`/db/state.db` in the container, backed by its own bind mount). Overridable via `state.path`; disable entirely with `state.enabled: false`. Each run records `done` / `error` per file so subsequent runs answer "already processed?" with an indexed lookup instead of up to three `exists()` probes per file, and an interrupted run resumes without redoing completed work. A file absent from the index but already carrying an output file is recorded as `done` on first sight — so enabling the index on an existing catalog reprocesses nothing. **Deleting `state.db` is safe**: the next run rebuilds it from whichever output files exist.
+
+An index left at the pre-EPIC-043 location (`<watch_dir>/.whispercrawl/state.db`) is moved to the new `db/` directory automatically on the first run — a one-time, best-effort migration (including the SQLite `-wal`/`-shm` sidecars); if it fails the run just starts a fresh index. `file_walker` never descends into a `db/` or `.whispercrawl/` directory under `watch_dir`.
 
 `max_files_per_run` caps how many files a single run processes; the remainder are picked up on the next scheduled run (safe because progress is persisted).
 

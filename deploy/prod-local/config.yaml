@@ -32,7 +32,8 @@ processing_mode: per_file
 # Deleting the file is safe: the next run re-derives it from existing output files (no reprocessing).
 state:
   enabled: true
-  # path: /audio/.whispercrawl/state.db   # default: <watch_dir>/.whispercrawl/state.db
+  # path: /db/state.db                    # default: <config dir>/db/state.db
+  # (a legacy /audio/.whispercrawl/state.db is moved here automatically on first run)
 
 # Max files to process per run; the rest are picked up on the next scheduled run; omit/null = unlimited
 # max_files_per_run: 500

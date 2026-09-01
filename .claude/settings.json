@@ -11,7 +11,10 @@
       "Bash(git push *)",
       "Bash(ruff check *)",
       "Bash(git stash *)",
-      "Bash(python -m pytest tests/test_processing_mode.py -q)"
+      "Bash(python -m pytest tests/test_processing_mode.py -q)",
+      "Bash(python -m pytest -q tests/test_state.py tests/test_file_walker.py tests/test_config.py tests/test_processing_index.py)",
+      "Bash(ruff format *)",
+      "Bash(python -c \"from whispercrawl.config import load_config; c=load_config\\('config.yaml'\\); print\\(c.state.path\\)\")"
     ]
   }
 }

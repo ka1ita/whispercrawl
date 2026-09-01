@@ -64,6 +64,7 @@ services:
       - ./audio:/audio:Z
       - ./config.yaml:/config.yaml:ro,Z
       - ./logs:/logs:Z
+      - ./db:/db:Z
     depends_on:
       whisper:
         condition: service_started

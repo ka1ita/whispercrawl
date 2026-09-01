@@ -304,3 +304,15 @@ class TestIterMediaFilesWithState:
 
         files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True))
         assert [f.name for f in files] == ["rec.mp3"]
+
+    def test_db_dir_is_not_walked(self, tmp_path: Path):
+        # EPIC-043: the index now lives in a `db/` directory; a `db/` under the
+        # watch dir (custom state.path, or an operator's own folder) is skipped.
+        (tmp_path / "rec.mp3").touch()
+        db_dir = tmp_path / "db"
+        db_dir.mkdir()
+        (db_dir / "state.db").write_bytes(b"")
+        (db_dir / "decoy.mp3").touch()  # would be a false candidate if traversed
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True))
+        assert [f.name for f in files] == ["rec.mp3"]

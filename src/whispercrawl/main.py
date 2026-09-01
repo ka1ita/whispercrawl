@@ -119,7 +119,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
 
     if config.state.enabled:
         from whispercrawl.state import default_state_path
-        state_path = config.state.path or default_state_path(config.watch_dir)
+        state_path = config.state.path or default_state_path(config.watch_dir)  # load_config always resolves .path
         if dry_run:
             logger.info("Would clear processing index: %s", state_path)
         elif Path(state_path).exists():
@@ -139,7 +139,11 @@ def run_pipeline(config: Config, dry_run: bool = False, cleanup: bool = False) -
     if dry_run:
         state = NullState()
     else:
-        state = open_state(config.state.enabled, config.state.path, config.watch_dir)
+        # config.state.path is always resolved by load_config; watch_dir enables
+        # the one-time migration of a legacy <watch_dir>/.whispercrawl/state.db.
+        state = open_state(
+            config.state.enabled, config.state.path, config.watch_dir, watch_dir=config.watch_dir
+        )
     try:
         _run_pipeline(config, state, dry_run, cleanup)
     finally:

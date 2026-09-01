@@ -46,9 +46,9 @@ sudo bash setup.sh
 `setup.sh` will:
 
 - Copy `.env.example` → `.env` (if `.env` does not yet exist)
-- Create `audio/` and `logs/` directories
+- Create `audio/`, `logs/`, and `db/` directories
 - Load all three Docker images from `dist/`
-- When run as root: create a system user/group matching the `whispercrawl` container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown` `audio/`, `logs/`, and `config.yaml` to it, so the non-root container can read/write the mounted paths. If not run as root, it prints the exact `sudo` commands to run manually instead.
+- When run as root: create a system user/group matching the `whispercrawl` container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown` `audio/`, `logs/`, `db/`, and `config.yaml` to it, so the non-root container can read/write the mounted paths. If not run as root, it prints the exact `sudo` commands to run manually instead.
 
 When run interactively, `setup.sh` prompts for the install directory (default: wherever `setup.sh` lives — press Enter to accept). To skip the prompt, pass it explicitly or set `INSTALL_DIR`:
 
@@ -173,12 +173,15 @@ tail -f logs/service_requests.ndjson
 
 ## Processing index
 
-`whispercrawl` keeps a persisted index of processed files at `audio/.whispercrawl/state.db`
-(SQLite). It lets each scheduled run skip files it has already handled without re-scanning
-the whole tree, and lets an interrupted run resume where it left off.
+`whispercrawl` keeps a persisted index of processed files at `db/state.db`
+(SQLite; mounted into the container at `/db`). It lets each scheduled run skip files it has
+already handled without re-scanning the whole tree, and lets an interrupted run resume where
+it left off. `setup.sh` creates and `chown`s the `db/` directory.
 
 - **Safe to delete.** The next run rebuilds it from whichever output files exist — nothing is reprocessed.
-- **Backups:** either include `audio/.whispercrawl/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
+- **Backups:** either include `db/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
+- **Upgrading from an older release:** an existing `audio/.whispercrawl/state.db` is moved into
+  `db/` automatically on the first run (best-effort; a failure just starts a fresh index).
 - Disable with `state.enabled: false` in `config.yaml`. Set `max_files_per_run` to cap how many
   files each run processes when first draining a large backlog.
 
@@ -190,7 +193,7 @@ the whole tree, and lets an interrupted run resume where it left off.
 deploy/prod-local/
   dist/                         ← image tars (transfer from build host)
   audio/                        ← mount point for audio/video files (created by setup.sh)
-  audio/.whispercrawl/state.db  ← persisted processing index (auto-created; safe to delete)
+  db/state.db                   ← persisted processing index (auto-created; safe to delete)
   logs/                         ← mount point for log output (created by setup.sh)
   .env                          ← HF_TOKEN, ASR_MODEL, APP_UID/APP_GID (created from .env.example by setup.sh)
   .env.example                  ← template for .env

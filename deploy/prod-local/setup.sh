@@ -29,8 +29,8 @@ APP_UID="${APP_UID:-1000}"
 APP_GID="${APP_GID:-1000}"
 
 echo "==> Creating runtime directories ..."
-mkdir -p audio logs
-chmod 750 audio logs
+mkdir -p audio logs db
+chmod 750 audio logs db
 
 echo "==> Loading Docker images from dist/ ..."
 
@@ -58,7 +58,7 @@ if [[ "$(id -u)" -eq 0 ]]; then
     useradd -r -u "$APP_UID" -g "$GROUP_NAME" -s /usr/sbin/nologin -M whispercrawl
     echo "    Created system user 'whispercrawl' (uid=$APP_UID gid=$APP_GID)."
   fi
-  chown -R "$APP_UID:$APP_GID" audio logs
+  chown -R "$APP_UID:$APP_GID" audio logs db
   if [[ -f config.yaml ]]; then
     chown "root:$APP_GID" config.yaml
     chmod 640 config.yaml
@@ -70,7 +70,7 @@ else
   echo "" >&2
   echo "      sudo groupadd -r -g $APP_GID whispercrawl 2>/dev/null || true" >&2
   echo "      sudo useradd -r -u $APP_UID -g $APP_GID -s /usr/sbin/nologin -M whispercrawl 2>/dev/null || true" >&2
-  echo "      sudo chown -R $APP_UID:$APP_GID \"$INSTALL_DIR/audio\" \"$INSTALL_DIR/logs\"" >&2
+  echo "      sudo chown -R $APP_UID:$APP_GID \"$INSTALL_DIR/audio\" \"$INSTALL_DIR/logs\" \"$INSTALL_DIR/db\"" >&2
   echo "      sudo chown root:$APP_GID \"$INSTALL_DIR/config.yaml\" && sudo chmod 640 \"$INSTALL_DIR/config.yaml\"" >&2
 fi
 

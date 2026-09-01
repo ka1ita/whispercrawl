@@ -85,7 +85,7 @@ class FormatterConfig:
 @dataclass
 class StateConfig:
     enabled: bool = True             # persisted index of processed files
-    path: Optional[str] = None       # default: <watch_dir>/.whispercrawl/state.db
+    path: Optional[str] = None       # default: <config dir>/db/state.db
 
 
 @dataclass
@@ -157,7 +157,7 @@ def load_config(path: Path) -> Config:
     state_cfg = _build(StateConfig, raw.get("state", {}) or {})
     if state_cfg.path is None:
         from whispercrawl.state import default_state_path
-        state_cfg.path = default_state_path(watch_dir)
+        state_cfg.path = default_state_path(Path(path).resolve().parent)
 
     max_files_per_run = raw.get("max_files_per_run")
     if max_files_per_run is not None and max_files_per_run < 1:

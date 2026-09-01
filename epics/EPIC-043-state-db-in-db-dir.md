@@ -190,22 +190,22 @@ state:
 
 ## Acceptance Criteria
 
-- [ ] With no `state.path` set, the index is created at `<config dir>/db/state.db`
+- [x] With no `state.path` set, the index is created at `<config dir>/db/state.db`
       (local) / `/db/state.db` (container).
-- [ ] An explicit `state.path` still overrides the default and is used verbatim.
-- [ ] On first run after upgrade, an existing `<watch_dir>/.whispercrawl/state.db`
+- [x] An explicit `state.path` still overrides the default and is used verbatim.
+- [x] On first run after upgrade, an existing `<watch_dir>/.whispercrawl/state.db`
       (with `-wal`/`-shm`) is moved to the new `db/` location automatically, with
       all records intact and zero reprocessing; the empty legacy dir is removed.
-- [ ] If migration fails, the run logs a WARNING and continues with a fresh index
+- [x] If migration fails, the run logs a WARNING and continues with a fresh index
       (rebuilt from output files, no reprocessing).
-- [ ] `file_walker` never descends into `db/` or `.whispercrawl/` under
+- [x] `file_walker` never descends into `db/` or `.whispercrawl/` under
       `watch_dir`.
-- [ ] `docker-compose.prod.yml`, `docker-compose.prod-local.yml`, and
+- [x] `docker-compose.prod.yml`, `docker-compose.prod-local.yml`, and
       `docker-compose.dev.yml` mount a dedicated `db/` directory; `setup.sh`
       creates and `chown`s it.
-- [ ] `--cleanup` clears the index at its new location.
-- [ ] `state.enabled: false` still creates nothing.
-- [ ] All existing tests pass; docs and config templates reflect the new path.
+- [x] `--cleanup` clears the index at its new location.
+- [x] `state.enabled: false` still creates nothing.
+- [x] All existing tests pass; docs and config templates reflect the new path.
 
 ## Out of Scope
 

@@ -17,7 +17,7 @@ COPY --from=builder /usr/local/bin/whispercrawl /usr/local/bin/whispercrawl
 RUN useradd -r -u 1000 -s /bin/false appuser
 
 # Mount points — host dirs are bind-mounted here at runtime
-VOLUME ["/audio", "/logs"]
+VOLUME ["/audio", "/logs", "/db"]
 
 USER appuser
 

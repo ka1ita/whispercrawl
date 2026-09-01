@@ -23,4 +23,5 @@ services:
       - ./audio:/audio:Z
       - ./config.yaml:/config.yaml:ro,Z
       - ./logs:/logs:Z
+      - ./db:/db:Z
     restart: unless-stopped

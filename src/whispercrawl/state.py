@@ -10,6 +10,7 @@ without reprocessing anything.
 from __future__ import annotations
 
 import logging
+import shutil
 import sqlite3
 import time
 from dataclasses import dataclass
@@ -19,8 +20,10 @@ from typing import Optional, Union
 logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = "2"
-STATE_DIRNAME = ".whispercrawl"
+STATE_DIRNAME = "db"
+LEGACY_STATE_DIRNAME = ".whispercrawl"  # pre-EPIC-043 location, under watch_dir
 STATE_FILENAME = "state.db"
+_SQLITE_SIDECARS = ("-wal", "-shm", "-journal")
 
 _MTIME_TOLERANCE = 1e-6  # seconds — filesystem mtime round-trips are not bit-exact
 
@@ -188,14 +191,55 @@ class NullState:
 State = Union[ProcessingState, NullState]
 
 
-def default_state_path(watch_dir: Union[str, Path]) -> str:
-    return str(Path(watch_dir) / STATE_DIRNAME / STATE_FILENAME)
+def default_state_path(config_root: Union[str, Path]) -> str:
+    """Default index location: a ``db/`` directory beside the config file."""
+    return str(Path(config_root) / STATE_DIRNAME / STATE_FILENAME)
 
 
-def open_state(enabled: bool, path: Optional[Union[str, Path]], watch_dir: Path) -> State:
+def _migrate_legacy_index(resolved: Path, watch_dir: Optional[Union[str, Path]]) -> None:
+    """Move a pre-EPIC-043 ``<watch_dir>/.whispercrawl/state.db`` to ``resolved``.
+
+    Best-effort and one-time: only runs when the new path does not exist yet and
+    a legacy DB does. On any failure the legacy DB is left in place and the run
+    continues with a fresh index (which re-derives itself from output files).
+    """
+    if watch_dir is None or resolved.exists():
+        return
+    legacy_dir = Path(watch_dir) / LEGACY_STATE_DIRNAME
+    legacy_db = legacy_dir / STATE_FILENAME
+    if not legacy_db.exists():
+        return
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(legacy_db), str(resolved))
+        for suffix in _SQLITE_SIDECARS:
+            sidecar = legacy_db.with_name(STATE_FILENAME + suffix)
+            if sidecar.exists():
+                shutil.move(str(sidecar), str(resolved.with_name(STATE_FILENAME + suffix)))
+        logger.info("Migrated processing index: %s -> %s", legacy_db, resolved)
+        try:
+            legacy_dir.rmdir()  # only succeeds if now empty
+        except OSError:
+            pass
+    except OSError as e:
+        logger.warning(
+            "Could not migrate legacy processing index %s (%s); starting a fresh index at %s",
+            legacy_db,
+            e,
+            resolved,
+        )
+
+
+def open_state(
+    enabled: bool,
+    path: Optional[Union[str, Path]],
+    config_root: Union[str, Path],
+    watch_dir: Optional[Union[str, Path]] = None,
+) -> State:
     """Return a live ``ProcessingState`` or a ``NullState`` per config."""
     if not enabled:
         return NullState()
-    resolved = Path(path) if path else Path(default_state_path(watch_dir))
+    resolved = Path(path) if path else Path(default_state_path(config_root))
+    _migrate_legacy_index(resolved, watch_dir)
     logger.debug("Opening processing index at %s", resolved)
     return ProcessingState.open(resolved)

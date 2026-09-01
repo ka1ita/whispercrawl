@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Generator, List, Optional
 
-from whispercrawl.state import STATE_DIRNAME, State
+from whispercrawl.state import LEGACY_STATE_DIRNAME, STATE_DIRNAME, State
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def iter_media_files(
 
     candidates: List[tuple] = []
     for path in root.rglob("*"):
-        if STATE_DIRNAME in path.parts:
+        if STATE_DIRNAME in path.parts or LEGACY_STATE_DIRNAME in path.parts:
             continue
         if not path.is_file():
             continue

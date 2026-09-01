@@ -193,7 +193,7 @@ class TestOpenState:
     def test_disabled_returns_nullstate(self, tmp_path: Path):
         st = open_state(False, None, tmp_path)
         assert isinstance(st, NullState)
-        assert not (tmp_path / ".whispercrawl").exists()
+        assert not (tmp_path / "db").exists()
 
     def test_enabled_default_path(self, tmp_path: Path):
         st = open_state(True, None, tmp_path)
@@ -201,7 +201,7 @@ class TestOpenState:
             assert isinstance(st, ProcessingState)
         finally:
             st.close()
-        assert (tmp_path / ".whispercrawl" / "state.db").exists()
+        assert (tmp_path / "db" / "state.db").exists()
 
     def test_enabled_explicit_path(self, tmp_path: Path):
         target = tmp_path / "custom" / "idx.db"
@@ -210,4 +210,82 @@ class TestOpenState:
         assert target.exists()
 
     def test_default_state_path(self, tmp_path: Path):
-        assert default_state_path(tmp_path) == str(tmp_path / ".whispercrawl" / "state.db")
+        assert default_state_path(tmp_path) == str(tmp_path / "db" / "state.db")
+
+
+class TestLegacyIndexMigration:
+    def _seed_legacy(self, watch_dir: Path, *, sidecars: bool = False) -> Path:
+        legacy = watch_dir / ".whispercrawl" / "state.db"
+        with ProcessingState.open(legacy) as st:
+            st.mark("a/b.mp3", "done", 123.0, 456)
+        if sidecars:
+            legacy.with_name("state.db-wal").write_bytes(b"")
+            legacy.with_name("state.db-shm").write_bytes(b"")
+        return legacy
+
+    def test_migrates_legacy_db_to_new_location(self, tmp_path: Path):
+        config_root = tmp_path / "cfg"
+        watch_dir = tmp_path / "audio"
+        watch_dir.mkdir()
+        legacy = self._seed_legacy(watch_dir)
+
+        st = open_state(True, None, config_root, watch_dir=watch_dir)
+        try:
+            assert st.is_current("a/b.mp3", 123.0, 456)
+        finally:
+            st.close()
+
+        assert (config_root / "db" / "state.db").exists()
+        assert not legacy.exists()
+        assert not legacy.parent.exists()  # empty legacy dir removed
+
+    def test_migrates_wal_and_shm_sidecars(self, tmp_path: Path):
+        watch_dir = tmp_path / "audio"
+        watch_dir.mkdir()
+        legacy = self._seed_legacy(watch_dir, sidecars=True)
+
+        target = tmp_path / "db" / "state.db"
+        # migrate without opening the DB, so a clean WAL close can't delete the moved sidecars
+        from whispercrawl.state import _migrate_legacy_index
+
+        _migrate_legacy_index(target, watch_dir)
+
+        assert target.with_name("state.db-wal").exists()
+        assert target.with_name("state.db-shm").exists()
+        assert not legacy.parent.exists()  # legacy dir emptied and removed
+
+    def test_no_migration_when_new_path_exists(self, tmp_path: Path):
+        watch_dir = tmp_path / "audio"
+        watch_dir.mkdir()
+        legacy = self._seed_legacy(watch_dir)
+
+        target = tmp_path / "db" / "state.db"
+        ProcessingState.open(target).close()  # new path already populated
+        open_state(True, str(target), tmp_path, watch_dir=watch_dir).close()  # migration must be skipped
+
+        assert legacy.exists()  # left untouched
+
+    def test_no_legacy_no_error(self, tmp_path: Path):
+        watch_dir = tmp_path / "audio"
+        watch_dir.mkdir()
+        st = open_state(True, None, tmp_path, watch_dir=watch_dir)
+        st.close()
+        assert (tmp_path / "db" / "state.db").exists()
+
+    def test_migration_failure_falls_back_to_fresh_index(self, tmp_path: Path, monkeypatch):
+        watch_dir = tmp_path / "audio"
+        watch_dir.mkdir()
+        self._seed_legacy(watch_dir)
+
+        import whispercrawl.state as state_mod
+
+        def boom(*_a, **_kw):
+            raise OSError("cannot move")
+
+        monkeypatch.setattr(state_mod.shutil, "move", boom)
+        st = open_state(True, None, tmp_path, watch_dir=watch_dir)
+        try:
+            assert st.lookup("a/b.mp3") is None  # fresh index
+        finally:
+            st.close()
+        assert (tmp_path / "db" / "state.db").exists()

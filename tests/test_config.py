@@ -19,7 +19,17 @@ class TestStateConfig:
     def test_defaults_enabled_with_resolved_path(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, ""))
         assert cfg.state.enabled is True
-        assert cfg.state.path == str(tmp_path / ".whispercrawl" / "state.db")
+        assert cfg.state.path == str(tmp_path / "db" / "state.db")
+
+    def test_default_path_anchored_at_config_dir_not_watch_dir(self, tmp_path: Path):
+        cfg_dir = tmp_path / "deploy"
+        cfg_dir.mkdir()
+        watch = tmp_path / "media"
+        watch.mkdir()
+        p = cfg_dir / "config.yaml"
+        p.write_text(f"watch_dir: {watch}\nextensions: [.mp3]\n", encoding="utf-8")
+        cfg = load_config(p)
+        assert cfg.state.path == str(cfg_dir / "db" / "state.db")
 
     def test_can_disable(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, "state:\n  enabled: false\n"))
