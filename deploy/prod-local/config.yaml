@@ -15,6 +15,13 @@ extensions:
 
 rescan: false
 
+# Processing order:
+#   per_file (default) = every step runs on one file before moving to the next
+#   per_step = each step (transcribe, postprocess, file-summarize) runs across all pending
+#              files before the next step starts — reduces Ollama model-swap overhead when
+#              postprocessing and file_summarization use different models
+processing_mode: per_file
+
 # Files whose name contains this string are skipped entirely (case-insensitive); set to "" to disable
 # skip_marker: _skip
 

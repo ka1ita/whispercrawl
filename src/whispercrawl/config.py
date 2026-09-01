@@ -106,6 +106,7 @@ class Config:
     watch_dir: Path
     extensions: List[str]
     rescan: bool = False  # False = skip-processed, True = full rescan
+    processing_mode: str = "per_file"  # "per_file" = all steps per file; "per_step" = each step across all files
     skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
     max_age_days: Optional[int] = None  # skip files older than this many days (mtime); None = unbounded
     max_files_per_run: Optional[int] = None  # cap files processed per run; None = unlimited
@@ -130,6 +131,10 @@ def load_config(path: Path) -> Config:
     """Load and parse config.yaml into a Config dataclass."""
     with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(_expand_env(f.read()))
+
+    processing_mode = raw.get("processing_mode", "per_file")
+    if processing_mode not in ("per_file", "per_step"):
+        raise ValueError(f"processing_mode must be 'per_file' or 'per_step', got {processing_mode!r}")
 
     formatter_cfg = _build(FormatterConfig, raw.get("formatter", {}))
     if formatter_cfg.format not in ("txt", "html", "md"):
@@ -163,6 +168,7 @@ def load_config(path: Path) -> Config:
         watch_dir=watch_dir,
         extensions=[e.lower() for e in raw.get("extensions", [])],
         rescan=raw.get("rescan", False),
+        processing_mode=processing_mode,
         skip_marker=raw.get("skip_marker", "_skip"),
         max_age_days=raw.get("max_age_days"),
         max_files_per_run=max_files_per_run,

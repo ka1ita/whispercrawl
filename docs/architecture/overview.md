@@ -38,6 +38,15 @@ Persisted index of processed files, backed by a single SQLite file at `<watch_di
 
 **Per-step resume.** Alongside the overall `done`/`error`/`partial` status, each file's row also tracks which individual pipeline step last completed (`transcribe`, `postprocess`, `file_summarize`) for its current `mtime`/`size`. If a run is interrupted mid-file — a crash, a `max_files_per_run` cutoff, `Ctrl-C` — the next run reads the already-written output of each completed step back from disk instead of re-calling the ASR/LLM services, and only resumes the steps that didn't finish. A row whose `mtime`/`size` no longer match the file on disk (it changed since the last attempt) discards its recorded steps and reprocesses from scratch. A file with a recorded `error`/`partial` row is always re-queued for another attempt, even if an earlier step's output already exists on disk — it is never silently treated as fully `done` just because one output file happens to be present.
 
+### Processing mode (`processing_mode`)
+
+Controls the order the per-file pipeline steps run in across a batch:
+
+- `per_file` (default): every step (transcribe → postprocess → file-summarize) runs on one file before moving to the next file.
+- `per_step`: each step runs across **all** pending files before the next step starts — transcribe every file, then postprocess every survivor, then file-summarize every survivor. Useful when `postprocessing` and `file_summarization` point at different Ollama models, since the model only needs to be loaded once per step instead of being swapped on nearly every file.
+
+Both modes write identical output — same files, same content, same `state.db` step-tracking (see [EPIC-041](../../epics/EPIC-041-per-step-resume.md)) — only the order of work differs. A transcription failure excludes a file from later steps in either mode; a postprocessing failure does not exclude a file from summarization (it falls back to the original transcript, per `summarize_source`).
+
 ### `pipeline/`
 
 All pipeline steps write plain `.txt` files internally. The Formatter runs last and converts to the final output format.

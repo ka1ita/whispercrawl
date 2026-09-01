@@ -47,3 +47,17 @@ class TestMaxFilesPerRun:
     def test_negative_raises(self, tmp_path: Path):
         with pytest.raises(ValueError, match="max_files_per_run"):
             load_config(_write(tmp_path, "max_files_per_run: -5\n"))
+
+
+class TestProcessingMode:
+    def test_defaults_to_per_file(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, ""))
+        assert cfg.processing_mode == "per_file"
+
+    def test_per_step_loads(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, "processing_mode: per_step\n"))
+        assert cfg.processing_mode == "per_step"
+
+    def test_invalid_value_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="processing_mode"):
+            load_config(_write(tmp_path, "processing_mode: bogus\n"))

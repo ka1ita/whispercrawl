@@ -80,6 +80,7 @@ Each step is independent and skippable. On error, `<file>_err.txt` is written an
 - **Skip mode** (`rescan: false`): if `<file>.txt` already exists, that file is skipped entirely.
 - **Persisted index** (`state.enabled: true`, default): `<watch_dir>/.whispercrawl/state.db` (SQLite) records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
 - **Per-step resume**: the index also records which pipeline step (transcribe/postprocess/file-summarize) last completed for each file's current mtime/size. An interrupted run resumes mid-file — already-written step outputs are read back from disk instead of re-calling whisper/ollama — rather than restarting the whole file. A changed file (new mtime/size) discards its recorded steps and reprocesses from scratch.
+- **Processing mode** (`processing_mode`, default `per_file`): `per_file` runs every step on one file before moving to the next; `per_step` runs each step across all pending files before the next step starts (reduces Ollama model-swap overhead when postprocessing/file_summarization use different models). Both produce identical output — only step ordering differs.
 
 ### Config
 

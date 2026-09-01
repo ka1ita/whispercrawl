@@ -213,9 +213,11 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
         dir_file_texts: dict[Path, dict[str, list]] = {}
         all_outputs_to_format: list[Path] = []
 
-        for file_path in files:
+        def _transcribe_one(file_path: Path) -> dict:
+            """Run/resume the transcribe step. Returns a per-file context dict; ctx["ok"]
+            is False (with no other keys) when transcription failed and the file must be
+            skipped entirely."""
             logger.info("Processing: %s", file_path)
-            success = True
             rel = str(file_path.relative_to(config.watch_dir))
             try:
                 fst = file_path.stat()
@@ -243,7 +245,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
                     if cleanup:
                         cleaner.clean(file_path, success=False)
                     _record(rel, fst, "error", "transcription failed")
-                    continue
+                    return {"ok": False}
                 except (KeyboardInterrupt, SystemExit):
                     _record(rel, fst, "partial", "interrupted mid-pipeline")
                     raise
@@ -256,79 +258,119 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool) -> None:
             # Track per-dir texts for concatenation step; entry is [transcript, fixed_text]
             dir_file_texts.setdefault(file_path.parent, {})[file_path.name] = [transcript, None]
 
-            # Track output files written for this media file; Formatter converts them at end
-            files_to_format = [txt_path]
-            fixed_text = None
+            return {
+                "ok": True,
+                "rel": rel,
+                "fst": fst,
+                "resume_steps": resume_steps,
+                "transcript": transcript,
+                "fixed_text": None,
+                "txt_path": txt_path,
+                "files_to_format": [txt_path],
+                "success": True,
+            }
 
-            if postprocessor:
-                fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
-                resumed_postprocess = "postprocess" in resume_steps and (
-                    fix_path.exists() if not config.postprocessing.replace_transcription else True
-                )
-                if resumed_postprocess:
-                    if config.postprocessing.replace_transcription:
-                        fixed_text = transcript
-                    else:
-                        fixed_text = fix_path.read_text(encoding="utf-8")
-                    dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
-                    if not config.postprocessing.replace_transcription:
-                        files_to_format.append(fix_path)
-                    logger.info("Resuming: post-processed text already present for %s", file_path)
+        def _postprocess_one(file_path: Path, ctx: dict) -> None:
+            if not postprocessor:
+                return
+            rel, fst, resume_steps = ctx["rel"], ctx["fst"], ctx["resume_steps"]
+            transcript, txt_path = ctx["transcript"], ctx["txt_path"]
+            fix_path = output_path(file_path, config.postprocessing.output_suffix, "txt")
+            resumed_postprocess = "postprocess" in resume_steps and (
+                fix_path.exists() if not config.postprocessing.replace_transcription else True
+            )
+            if resumed_postprocess:
+                if config.postprocessing.replace_transcription:
+                    fixed_text = transcript
                 else:
-                    try:
-                        fixed_text = postprocessor.process(transcript, source_path=file_path)
-                        fix_path.write_text(fixed_text, encoding="utf-8")
-                        dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
-                        if config.postprocessing.replace_transcription:
-                            fix_path.replace(txt_path)
-                            logger.info("Replaced transcript with post-processed: %s", txt_path)
-                        else:
-                            files_to_format.append(fix_path)
-                            logger.info("Post-processed: %s", fix_path)
-                        if fst is not None:
-                            state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size)
-                    except PostProcessingError as e:
-                        logger.error("Post-processing failed for %s: %s", file_path, e)
-                        _write_error(file_path, config.postprocessing.error_suffix, str(e))
-                        success = False
+                    fixed_text = fix_path.read_text(encoding="utf-8")
+                dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
+                if not config.postprocessing.replace_transcription:
+                    ctx["files_to_format"].append(fix_path)
+                logger.info("Resuming: post-processed text already present for %s", file_path)
+                ctx["fixed_text"] = fixed_text
+                return
 
-            if file_summarizer:
-                sum_path = output_path(file_path, config.file_summarization.output_suffix, "txt")
-                if "file_summarize" in resume_steps and sum_path.exists():
-                    files_to_format.append(sum_path)
-                    logger.info("Resuming: file summary already present: %s", sum_path)
+            try:
+                fixed_text = postprocessor.process(transcript, source_path=file_path)
+                fix_path.write_text(fixed_text, encoding="utf-8")
+                dir_file_texts[file_path.parent][file_path.name][1] = fixed_text
+                if config.postprocessing.replace_transcription:
+                    fix_path.replace(txt_path)
+                    logger.info("Replaced transcript with post-processed: %s", txt_path)
                 else:
-                    summary_input = _pick_summary_input(
-                        config.file_summarization.summarize_source,
-                        transcript,
-                        fixed_text,
-                        file_path.name,
-                    )
-                    try:
-                        summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
-                        sum_path.write_text(summary, encoding="utf-8")
-                        files_to_format.append(sum_path)
-                        logger.info("File summary written: %s", sum_path)
-                        if fst is not None:
-                            state.mark_step(rel, "file_summarize", fst.st_mtime, fst.st_size)
-                    except SummarizationError as e:
-                        logger.error("File summarization failed for %s: %s", file_path, e)
-                        _write_error(file_path, config.file_summarization.error_suffix, str(e))
-                        success = False
+                    ctx["files_to_format"].append(fix_path)
+                    logger.info("Post-processed: %s", fix_path)
+                if fst is not None:
+                    state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size)
+                ctx["fixed_text"] = fixed_text
+            except PostProcessingError as e:
+                logger.error("Post-processing failed for %s: %s", file_path, e)
+                _write_error(file_path, config.postprocessing.error_suffix, str(e))
+                ctx["success"] = False
 
-            all_outputs_to_format.extend(files_to_format)
+        def _summarize_one(file_path: Path, ctx: dict) -> None:
+            if not file_summarizer:
+                return
+            rel, fst, resume_steps = ctx["rel"], ctx["fst"], ctx["resume_steps"]
+            transcript, fixed_text = ctx["transcript"], ctx["fixed_text"]
+            sum_path = output_path(file_path, config.file_summarization.output_suffix, "txt")
+            if "file_summarize" in resume_steps and sum_path.exists():
+                ctx["files_to_format"].append(sum_path)
+                logger.info("Resuming: file summary already present: %s", sum_path)
+                return
 
+            summary_input = _pick_summary_input(
+                config.file_summarization.summarize_source,
+                transcript,
+                fixed_text,
+                file_path.name,
+            )
+            try:
+                summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
+                sum_path.write_text(summary, encoding="utf-8")
+                ctx["files_to_format"].append(sum_path)
+                logger.info("File summary written: %s", sum_path)
+                if fst is not None:
+                    state.mark_step(rel, "file_summarize", fst.st_mtime, fst.st_size)
+            except SummarizationError as e:
+                logger.error("File summarization failed for %s: %s", file_path, e)
+                _write_error(file_path, config.file_summarization.error_suffix, str(e))
+                ctx["success"] = False
+
+        def _finalize_one(file_path: Path, ctx: dict) -> None:
+            all_outputs_to_format.extend(ctx["files_to_format"])
+            success = ctx["success"]
             if cleanup:
                 cleaner.clean(file_path, success)
-
             if success:
                 err_path = output_path(file_path, config.transcription.error_suffix, "txt")
                 if err_path.exists():
                     err_path.unlink()
                     logger.debug("Removed stale error file: %s", err_path)
-
-            _record(rel, fst, "done" if success else "error",
+            _record(ctx["rel"], ctx["fst"], "done" if success else "error",
                     "" if success else "pipeline step failed")
+
+        if config.processing_mode == "per_step":
+            contexts: dict[Path, dict] = {}
+            for file_path in files:
+                ctx = _transcribe_one(file_path)
+                if ctx["ok"]:
+                    contexts[file_path] = ctx
+            for file_path, ctx in contexts.items():
+                _postprocess_one(file_path, ctx)
+            for file_path, ctx in contexts.items():
+                _summarize_one(file_path, ctx)
+            for file_path, ctx in contexts.items():
+                _finalize_one(file_path, ctx)
+        else:
+            for file_path in files:
+                ctx = _transcribe_one(file_path)
+                if not ctx["ok"]:
+                    continue
+                _postprocess_one(file_path, ctx)
+                _summarize_one(file_path, ctx)
+                _finalize_one(file_path, ctx)
 
         prefix = "_" if config.dir_summarization.underscore_prefix else ""
         for dir_path in sorted(dir_file_texts):
