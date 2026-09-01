@@ -4,6 +4,15 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-044: Strip the Speaker Prefix the Whisper Service Embeds in Segment Text
+
+- [x] `transcriber.py`: add `import re`, module-level `_EMBEDDED_SPEAKER_RE` (`^\s*\[SPEAKER_\w+\]\s*:?\s*`) and `_strip_embedded_speaker` helper (loops to clear a doubled prefix) (EPIC-044, 2026-09-01)
+- [x] `transcriber.py` `_format_diarized`: apply `_strip_embedded_speaker` to every segment's text in both the speaker-present and no-speaker branches; re-check emptiness after stripping; the emitted label still comes only from the `speaker` key (EPIC-044, 2026-09-01)
+- [x] Tests — `tests/test_transcriber.py`: embedded tag stripped in colon + timestamp formats; `speaker` key wins over a differing embedded tag; doubled embedded tag fully removed; segment with only a tag is skipped; clean text unchanged; no-speaker branch strips a stray tag (EPIC-044, 2026-09-01)
+- [x] `docs/architecture/decisions/ADR-002-strip-embedded-speaker-prefix.md` — record the service-side change and the strip decision (EPIC-044, 2026-09-01)
+
+---
+
 ## EPIC-043: Relocate the Processing Index to a Dedicated `db/` Directory
 
 - [x] `state.py`: `STATE_DIRNAME = "db"` (was `".whispercrawl"`); add `LEGACY_STATE_DIRNAME = ".whispercrawl"`; `default_state_path(config_root)` returns `<config_root>/db/state.db` (EPIC-043, 2026-09-01)

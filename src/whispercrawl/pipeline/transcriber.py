@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -13,6 +14,20 @@ from whispercrawl.config import TranscriptionConfig
 from whispercrawl.file_walker import detect_language
 
 logger = logging.getLogger(__name__)
+
+# Some whisper-asr-webservice versions (whisperx engine) prepend the speaker tag
+# to each segment's `text` field in addition to the separate `speaker` key. We
+# format our own label, so strip a leading '[SPEAKER_xx]:' / '[SPEAKER_xx]' here.
+_EMBEDDED_SPEAKER_RE = re.compile(r"^\s*\[SPEAKER_[0-9A-Za-z_]+\]\s*:?\s*")
+
+
+def _strip_embedded_speaker(text: str) -> str:
+    """Remove a leading '[SPEAKER_xx]:' tag the service embeds in segment text."""
+    while True:
+        stripped = _EMBEDDED_SPEAKER_RE.sub("", text, count=1)
+        if stripped == text:
+            return text
+        text = stripped
 
 
 class TranscriptionError(Exception):
@@ -118,13 +133,15 @@ class Transcriber:
                 "set HF_TOKEN in your environment and restart the whisper container",
                 filename,
             )
-            return "\n".join(
-                s.get("text", "").strip() for s in segments if s.get("text", "").strip()
+            cleaned = (
+                _strip_embedded_speaker(s.get("text", "").strip()).strip()
+                for s in segments
             )
+            return "\n".join(t for t in cleaned if t)
 
         lines = []
         for seg in segments:
-            text = seg.get("text", "").strip()
+            text = _strip_embedded_speaker(seg.get("text", "").strip()).strip()
             if not text:
                 continue
             speaker = seg.get("speaker", "UNKNOWN")

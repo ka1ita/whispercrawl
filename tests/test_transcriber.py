@@ -138,6 +138,91 @@ class TestDiarizeOnWithSpeakers:
         assert result == "[SPEAKER_00]: Hello.\n[SPEAKER_01]: World."
 
 
+# ── embedded speaker prefix in segment text (EPIC-044) ───────────────────────
+
+class TestEmbeddedSpeakerPrefix:
+    def test_strips_embedded_tag_colon_format(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "[SPEAKER_00]: Hello."}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_00]: Hello."
+
+    def test_strips_embedded_tag_timestamp_format(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([
+            {"speaker": "SPEAKER_00", "start": 52.0, "text": "[SPEAKER_00]: Hello."}
+        ])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=True)).transcribe(audio)
+
+        assert result == "[SPEAKER_00 00:00:52] Hello."
+
+    def test_speaker_key_wins_over_embedded_tag(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_01", "text": "[SPEAKER_00]: hi"}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_01]: hi"
+
+    def test_doubled_embedded_tag_fully_stripped(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([
+            {"speaker": "SPEAKER_00", "text": "[SPEAKER_00]: [SPEAKER_00]: hi"}
+        ])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_00]: hi"
+
+    def test_segment_with_only_embedded_tag_is_skipped(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([
+            {"speaker": "SPEAKER_00", "text": "[SPEAKER_00]: Hello."},
+            {"speaker": "SPEAKER_01", "text": "[SPEAKER_01]:   "},
+            {"speaker": "SPEAKER_00", "text": "[SPEAKER_00]: Bye."},
+        ])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_00]: Hello.\n[SPEAKER_00]: Bye."
+
+    def test_clean_text_unchanged(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([{"speaker": "SPEAKER_00", "text": "No tag here."}])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True, speaker_timestamps=False)).transcribe(audio)
+
+        assert result == "[SPEAKER_00]: No tag here."
+
+    def test_no_speaker_branch_strips_embedded_tag(self, tmp_path):
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+        body = _json_body([
+            {"text": "[SPEAKER_00]: First line."},
+            {"text": "[SPEAKER_00]: Second line."},
+        ])
+
+        with patch("httpx.post", return_value=_response(body)):
+            result = Transcriber(_config(diarize=True)).transcribe(audio)
+
+        assert result == "First line.\nSecond line."
+
+
 # ── diarize=True, no speaker labels (HF_TOKEN missing) ───────────────────────
 
 class TestDiarizeOnNoSpeakers:
