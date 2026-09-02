@@ -42,6 +42,22 @@ class TestIterMediaFiles:
         assert "call.mp4" in names
         assert "meeting_ru.mp3" in names
 
+    def test_candidate_that_vanishes_before_stat_is_skipped(self, media_dir: Path, monkeypatch):
+        """A file removed between the directory scan and its stat() (EPIC-055) is
+        skipped rather than crashing the generator with OSError."""
+        real_stat = Path.stat
+
+        def flaky_stat(self, *args, **kwargs):
+            if self.name == "meeting_ru.mp3":
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", flaky_stat)
+        files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
+        names = [f.name for f in files]
+        assert "meeting_ru.mp3" not in names
+        assert "call.mp4" in names
+
     def test_ignores_non_media_files(self, media_dir: Path):
         files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
         assert all(f.suffix in EXTENSIONS for f in files)

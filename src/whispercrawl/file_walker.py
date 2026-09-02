@@ -62,7 +62,12 @@ def iter_media_files(
         if _marker and _marker in path.stem.lower():
             logger.debug("Skipping %s — filename contains skip marker %r", path, skip_marker)
             continue
-        st = path.stat()
+        try:
+            st = path.stat()
+        except OSError:
+            # Vanished / became unreadable between the directory scan and now.
+            logger.debug("Skipping %s — no longer accessible", path)
+            continue
         mtime, size = st.st_mtime, st.st_size
         if _cutoff is not None and mtime < _cutoff:
             logger.debug("Skipping %s — older than max_age_days=%s", path, max_age_days)

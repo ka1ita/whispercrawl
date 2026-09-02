@@ -62,7 +62,10 @@ CREATE TABLE IF NOT EXISTS errors (
     path       TEXT NOT NULL,
     engine     TEXT NOT NULL,        -- '' = single implicit engine
     scope      TEXT NOT NULL,        -- 'file' | 'dir'
-    step       TEXT NOT NULL,        -- transcribe | postprocess | file_summarize | dir_summarize
+    step       TEXT NOT NULL,        -- transcribe | postprocess | file_summarize |
+                                     -- finalize | format | dir_summarize | dir_finalize
+                                     -- (EPIC-055 adds finalize/format/dir_finalize
+                                     --  for unexpected exceptions in those stages)
     message    TEXT NOT NULL,
     mtime      REAL,
     size       INTEGER,

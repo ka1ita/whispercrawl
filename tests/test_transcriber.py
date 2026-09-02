@@ -463,3 +463,20 @@ class TestErrorHandling:
         with patch("httpx.post", return_value=_response("error", status=503)):
             with pytest.raises(TranscriptionError, match="503"):
                 Transcriber(_config(diarize=False)).transcribe(audio)
+
+    def test_missing_source_file_raises_transcription_error(self, tmp_path):
+        """A file that vanished between discovery and transcription (EPIC-055) —
+        the bare OSError from open() is wrapped, not propagated."""
+        audio = tmp_path / "gone.ogg"  # never created
+
+        with pytest.raises(TranscriptionError, match="cannot read source file"):
+            Transcriber(_config()).transcribe(audio)
+
+    def test_httpx_error_subclass_raises_transcription_error(self, tmp_path):
+        """Any httpx.HTTPError (not just RequestError) is wrapped (EPIC-055)."""
+        audio = tmp_path / "a.ogg"
+        audio.write_bytes(b"\x00")
+
+        with patch("httpx.post", side_effect=httpx.ConnectError("refused")):
+            with pytest.raises(TranscriptionError, match="whisper request failed"):
+                Transcriber(_config()).transcribe(audio)

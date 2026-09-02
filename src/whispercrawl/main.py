@@ -338,6 +338,15 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 except (KeyboardInterrupt, SystemExit):
                     _record(rel, fst, "partial", "interrupted mid-pipeline")
                     raise
+                except Exception as e:  # noqa: BLE001 — any failure must not abort the run
+                    logger.exception("Transcription failed for %s", tag)
+                    _report_error(
+                        rel, "transcribe", name, repr(e),
+                        mtime=fst.st_mtime if fst is not None else None,
+                        size=fst.st_size if fst is not None else None,
+                    )
+                    file_engine_ok[file_path][name] = False
+                    return None
 
                 logger.info("Transcribed: %s", tag)
                 if fst is not None:
@@ -385,6 +394,18 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 )
                 ctx["success"] = False
                 return
+            except (KeyboardInterrupt, SystemExit):
+                _record(rel, fst, "partial", "interrupted mid-pipeline")
+                raise
+            except Exception as e:  # noqa: BLE001 — any failure must not abort the run
+                logger.exception("Post-processing failed for %s", file_path)
+                _report_error(
+                    rel, "postprocess", eng, repr(e),
+                    mtime=fst.st_mtime if fst is not None else None,
+                    size=fst.st_size if fst is not None else None,
+                )
+                ctx["success"] = False
+                return
 
             ctx["fixed_text"] = fixed_text
             dir_file_texts[file_path.parent][eng][file_path.name][1] = fixed_text
@@ -415,6 +436,18 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 )
                 ctx["success"] = False
                 return
+            except (KeyboardInterrupt, SystemExit):
+                _record(rel, fst, "partial", "interrupted mid-pipeline")
+                raise
+            except Exception as e:  # noqa: BLE001 — any failure must not abort the run
+                logger.exception("File summarization failed for %s", file_path)
+                _report_error(
+                    rel, "file_summarize", eng, repr(e),
+                    mtime=fst.st_mtime if fst is not None else None,
+                    size=fst.st_size if fst is not None else None,
+                )
+                ctx["success"] = False
+                return
 
             ctx["summary"] = summary
             logger.info("Summarized: %s", file_path)
@@ -425,17 +458,30 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             success = ctx["success"]
             rel, fst, eng = ctx["rel"], ctx["fst"], ctx["engine"]
             if success:
-                body = ctx["fixed_text"] if ctx["fixed_text"] is not None else ctx["transcript"]
-                document = compose(
-                    config.result.file_sections,
-                    {"summary": ctx["summary"], "transcript": body},
-                    _headings,
-                    config.result,
-                )
-                result_path = output_path(
-                    file_path, ctx["elabel"] + config.transcription.output_suffix, "txt"
-                )
-                result_path.write_text(document, encoding="utf-8")
+                try:
+                    body = ctx["fixed_text"] if ctx["fixed_text"] is not None else ctx["transcript"]
+                    document = compose(
+                        config.result.file_sections,
+                        {"summary": ctx["summary"], "transcript": body},
+                        _headings,
+                        config.result,
+                    )
+                    result_path = output_path(
+                        file_path, ctx["elabel"] + config.transcription.output_suffix, "txt"
+                    )
+                    result_path.write_text(document, encoding="utf-8")
+                except (KeyboardInterrupt, SystemExit):
+                    _record(rel, fst, "partial", "interrupted mid-pipeline")
+                    raise
+                except Exception as e:  # noqa: BLE001 — any failure must not abort the run
+                    logger.exception("Writing result failed for %s", file_path)
+                    _report_error(
+                        rel, "finalize", eng, repr(e),
+                        mtime=fst.st_mtime if fst is not None else None,
+                        size=fst.st_size if fst is not None else None,
+                    )
+                    file_engine_ok[file_path][eng] = False
+                    return
                 all_outputs_to_format.append(result_path)
                 logger.info("Result written: %s", result_path)
                 if refresh and fst is not None:
@@ -458,26 +504,47 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             _record(rel, fst, "done" if all_ok else "error",
                     "" if all_ok else f"pipeline step failed for engine(s): {', '.join(failed)}")
 
+        def _unexpected_file_failure(file_path: Path) -> None:
+            """Last-resort guard: an exception escaped a step's own handling.
+            Record the file as errored and move on rather than abort the run."""
+            logger.exception("Unexpected failure processing %s", file_path)
+            rel, fst = file_meta.get(file_path, (str(file_path), None))
+            file_engine_ok.setdefault(file_path, {}).setdefault("", False)
+            _record(rel, fst, "error", "unexpected failure during processing")
+
         if config.processing_mode == "per_step":
             pairs: list = []
             for file_path in files:
-                for ctx in _transcribe_file(file_path):
-                    pairs.append((file_path, ctx))
-            for file_path, ctx in pairs:
-                _postprocess_one(file_path, ctx)
-            for file_path, ctx in pairs:
-                _summarize_one(file_path, ctx)
-            for file_path, ctx in pairs:
-                _finalize_one(file_path, ctx)
+                try:
+                    for ctx in _transcribe_file(file_path):
+                        pairs.append((file_path, ctx))
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Exception:  # noqa: BLE001
+                    _unexpected_file_failure(file_path)
+            for step_fn in (_postprocess_one, _summarize_one, _finalize_one):
+                for file_path, ctx in pairs:
+                    try:
+                        step_fn(file_path, ctx)
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception:  # noqa: BLE001
+                        _unexpected_file_failure(file_path)
+                        ctx["success"] = False
             for file_path in files:
                 if file_path in file_meta:
                     _finalize_file(file_path)
         else:
             for file_path in files:
-                for ctx in _transcribe_file(file_path):
-                    _postprocess_one(file_path, ctx)
-                    _summarize_one(file_path, ctx)
-                    _finalize_one(file_path, ctx)
+                try:
+                    for ctx in _transcribe_file(file_path):
+                        _postprocess_one(file_path, ctx)
+                        _summarize_one(file_path, ctx)
+                        _finalize_one(file_path, ctx)
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Exception:  # noqa: BLE001
+                    _unexpected_file_failure(file_path)
                 if file_path in file_meta:
                     _finalize_file(file_path)
 
@@ -518,6 +585,11 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 except SummarizationError as e:
                     logger.error("Directory summarization failed for %s: %s", dir_path, e)
                     _report_error(dir_rel, "dir_summarize", eng_name, str(e), scope="dir")
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Exception as e:  # noqa: BLE001 — one bad directory must not abort the rest
+                    logger.exception("Directory result failed for %s", dir_path)
+                    _report_error(dir_rel, "dir_finalize", eng_name, repr(e), scope="dir")
         dir_file_texts.clear()
 
         outstanding = state.get_errors()
@@ -531,8 +603,16 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             )
 
         for path in all_outputs_to_format:
-            if path.exists():
+            if not path.exists():
+                continue
+            try:
                 formatter.format_file(path)
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:  # noqa: BLE001 — one bad file must not skip the rest
+                logger.exception("Formatting failed for %s", path)
+                rel = _rel_dir(path)
+                _report_error(rel, "format", "", repr(e), scope="file")
 
 
 def main() -> None:

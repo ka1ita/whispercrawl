@@ -4,6 +4,30 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-055: A Step's Unexpected Exception Must Not Crash the Run
+
+_Robustness fix. A `FileNotFoundError` (source moved/deleted between discovery and
+transcription) and any other non-typed exception in a step currently abort the
+whole run with a raw traceback; they should be recorded as an `errors` row
+(as EPIC-049) and the run should continue. See [epics/EPIC-055-resilient-step-failures.md](../epics/EPIC-055-resilient-step-failures.md)._
+
+- [x] `pipeline/transcriber.py`: wrap `open(file_path, "rb")` → `TranscriptionError("cannot read source file: ...")`; broaden request `except httpx.RequestError` to `httpx.HTTPError` (EPIC-055, 2026-09-02)
+- [x] `main.py` `_transcribe_engine`: trailing `except Exception` after the `TranscriptionError` branch — `logger.exception`, `_report_error(rel, "transcribe", name, repr(e), ...)`, `file_engine_ok[...][name] = False`, `return None`; `except (KeyboardInterrupt, SystemExit)` stays first (EPIC-055, 2026-09-02)
+- [x] `main.py` `_postprocess_one` / `_summarize_one`: same catch-all after the domain-exception branch — record error (`repr(e)`), `ctx["success"] = False`, return; KeyboardInterrupt/SystemExit → `partial` + re-raise (EPIC-055, 2026-09-02)
+- [x] `main.py` `_finalize_one`: wrap `compose` + `result_path.write_text` in `try/except Exception` → `_report_error(rel, "finalize", eng, ...)`, mark engine failed, no partial path appended to `all_outputs_to_format` (EPIC-055, 2026-09-02)
+- [x] `main.py` per-directory loop: `except SummarizationError` kept; added `except (KeyboardInterrupt, SystemExit): raise` + `except Exception` → `_report_error(dir_rel, "dir_finalize", eng, repr(e), scope="dir")` (EPIC-055, 2026-09-02)
+- [x] `main.py` final formatting pass: each `formatter.format_file(path)` wrapped → `logger.exception` + `errors` row (`step="format"`); remaining outputs still formatted (EPIC-055, 2026-09-02)
+- [x] `main.py` top-level file loops (both `per_file` and `per_step`): body wrapped via `_unexpected_file_failure` — `logger.exception`, best-effort `_record(rel, fst, "error", ...)`, `continue` (EPIC-055, 2026-09-02)
+- [x] `file_walker.py`: `iter_media_files` skips (DEBUG) a candidate whose `stat()` raises `OSError` (vanished between scan and stat) instead of letting it escape (EPIC-055, 2026-09-02)
+- [x] `state.py`: documented the new `errors.step` tokens (`finalize`, `format`, `dir_finalize`) in the schema comment (EPIC-055, 2026-09-02)
+- [x] Docs: `CLAUDE.md` (pipeline description + Key Conventions), `docs/architecture/overview.md` (output conventions), new `docs/architecture/decisions/ADR-009-resilient-step-failures.md` (EPIC-055, 2026-09-02)
+- [x] Tests — `test_transcriber.py`: non-existent path → `TranscriptionError("cannot read source file")`; `httpx.ConnectError` → `TranscriptionError` (EPIC-055, 2026-09-02)
+- [x] Tests — new `test_resilient_failures.py`: bare `FileNotFoundError` from one file's `open()` → `errors` row + `status='error'`, second file still produces its result, run does not raise; `RuntimeError` from transcribe likewise; `Path.write_text` → `OSError` for one file → `finalize` row, no result file, other file unaffected; `Formatter.format_file` raising for one path → `format` row, others formatted; `concat_transcriptions` `RuntimeError` in one dir → `dir_finalize` `scope='dir'` row, other dir's result written; `KeyboardInterrupt` → `raises KeyboardInterrupt` + `status='partial'` (EPIC-055, 2026-09-02)
+- [x] Tests — `test_file_walker.py`: candidate whose `stat` raises `FileNotFoundError` is skipped, no exception, other candidates yielded (EPIC-055, 2026-09-02)
+- [x] Verified: full suite 460 passing; `ruff check src` unchanged at baseline (EPIC-055, 2026-09-02)
+
+---
+
 ## EPIC-054: Dev Stack — Second ASR Service on :9001 and a Dedicated `deploy/dev/config.yaml`
 
 _Depends on EPIC-048 (landed). Deployment artifacts + a dev config template only — no `src/` or test changes. See [epics/EPIC-054-dev-second-asr-engine.md](../epics/EPIC-054-dev-second-asr-engine.md). Landed 2026-09-02._

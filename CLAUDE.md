@@ -77,11 +77,17 @@ after all files in a directory:
   → Summarizer + Composer + Formatter → _<dirname>.<ext>   (dir summary + concat)
 ```
 
-Each step is independent and skippable. On any step's failure nothing is written
-beside the audio (no partial result); the failure is recorded in the processing
-index (`status='error'` + an `errors` row per failing step/engine) and processing
-continues with the next file. `whispercrawl --errors` lists them. No `_err.txt`
-sidecar is ever written (EPIC-051/052).
+Each step is independent and skippable. On **any** exception in a step — the
+typed pipeline errors *and* anything unexpected (a source file moved/deleted
+between discovery and processing, a permission error, a full disk on the result
+write, a malformed service response) — nothing is written beside the audio (no
+partial result); the failure is recorded in the processing index
+(`status='error'` + an `errors` row per failing step/engine, `step` ∈
+`transcribe` / `postprocess` / `file_summarize` / `finalize` / `format` /
+`dir_summarize` / `dir_finalize`) and processing continues with the next file.
+Only `KeyboardInterrupt` / `SystemExit` abort the run (recorded `status='partial'`).
+`whispercrawl --errors` lists outstanding failures. No `_err.txt` sidecar is ever
+written (EPIC-051/052/055).
 
 ### Key Conventions
 
@@ -110,6 +116,7 @@ sidecar is ever written (EPIC-051/052).
 - **Skip mode** (`rescan: false`): if `<file>.<ext>` already exists (any format), that file is skipped entirely.
 - **Persisted index** (`<config dir>/db/state.db`, SQLite, always on — EPIC-051): a dedicated `db/` directory beside `config.yaml` (`/db/state.db` in the container, its own bind mount). Records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. A legacy `<watch_dir>/.whispercrawl/state.db` is moved here automatically on first run. Only `state.path` is configurable (override the default location). `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
 - **Recorded errors** (EPIC-049): a failing step writes an `errors` row (`path`, `engine`, `scope` `file`/`dir`, `step`, message) — never a `<file>_err.txt` sidecar; the row is cleared when that file/dir next succeeds, and dropped when the source file changes. `whispercrawl --errors` prints outstanding failures grouped by path and exits non-zero if any exist. `--cleanup` empties the `errors` table (with the rest of the index).
+- **Resilient step failures** (EPIC-055): a step catches its typed exception *and* has a trailing catch-all — any other exception is logged (`logger.exception`), recorded as an `errors` row (`repr(e)` as the message), and the run moves to the next file instead of crashing with a traceback. The per-file loop, the per-directory loop, and the final formatting pass are each guarded the same way. `Transcriber.transcribe` wraps `open()` (`TranscriptionError("cannot read source file: …")`) and catches every `httpx.HTTPError`. `file_walker` skips a candidate that disappears between the directory scan and its `stat()`.
 - **Per-step resume**: the index also records which pipeline step (transcribe/postprocess/file-summarize) last completed for each file's current mtime/size. An interrupted run resumes mid-file — already-written step outputs are read back from disk instead of re-calling whisper/ollama — rather than restarting the whole file. A changed file (new mtime/size) discards its recorded steps and reprocesses from scratch.
 - **Stored transcript text** (always — EPIC-051): the index keeps each file's raw ASR transcript and post-processed text, keyed to its mtime/size. With EPIC-047 this is the *only* place the raw transcript lives — the on-disk result holds the post-processed (or raw) transcript body, never both. Resume and `--refresh` read the transcript back from here.
 - **`--refresh`**: a single pass that re-runs every step downstream of ASR (postprocess → summary → dir concat/summary → compose → format) from the stored transcript with the current config and **no whisper call** — the fast path for iterating on prompts, models, `formatter`, or `result`. Honors `skip_marker` / `max_age_days` / `max_files_per_run` / `processing_mode`; a file with no stored text is skipped (no error recorded); a changed source file is skipped (its stored text is stale). Changing `transcription` settings still requires `rescan: true`.

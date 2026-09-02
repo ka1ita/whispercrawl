@@ -118,6 +118,7 @@ CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be pr
 - One consolidated result per audio file (`<file>.<ext>`) and one per directory (`_<dirname>.<ext>`); no `_fix`/`_sum`/`_all`/`_concat` sidecars (EPIC-047).
 - The composed result is assembled as plain `.txt`, then `Formatter.format_file()` converts it to `.md`/`.html` and removes the `.txt`.
 - A result is written only on **success** of every step for that file — otherwise the failure is recorded in the index `errors` table and cleared on the next success.
+- **Any** exception in a step is contained (EPIC-055): the typed pipeline error *and* anything unexpected (source file vanished before transcription, permission error, disk full on the write, malformed service body) is logged, written as an `errors` row (`step` may be `finalize` / `format` / `dir_finalize`), and the run continues with the next file. Only `KeyboardInterrupt` / `SystemExit` abort it (`status='partial'`).
 - Language is inferred from filename suffix `_ru`/`_en`/`_auto`; falls back to config default.
 
 ### Output format (`formatter.format`)

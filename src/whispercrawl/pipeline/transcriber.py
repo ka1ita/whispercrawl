@@ -77,7 +77,12 @@ class Transcriber:
         if self.config.encode is not None:
             params["encode"] = str(self.config.encode).lower()
 
-        with open(file_path, "rb") as f:
+        try:
+            f = open(file_path, "rb")
+        except OSError as exc:
+            raise TranscriptionError(f"cannot read source file: {exc}") from exc
+
+        with f:
             start = time.monotonic()
             try:
                 response = httpx.post(
@@ -86,7 +91,7 @@ class Transcriber:
                     files={"audio_file": (file_path.name, f)},
                     timeout=self.config.timeout,
                 )
-            except httpx.RequestError as exc:
+            except httpx.HTTPError as exc:
                 raise TranscriptionError(f"whisper request failed: {exc}") from exc
             duration = time.monotonic() - start
 
