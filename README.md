@@ -207,14 +207,14 @@ deploy/
     config.yaml                         # dev config — two ASR engines wired (asr-webservice :9000, asr-webservice2 :9001)
     docker-compose.dev.yml              # all services in Docker (asr-webservice x2, ollama, whispercrawl)
     docker-compose.services.yml         # asr-webservice x2 + ollama only (run whispercrawl locally)
-    app-docker-start.sh / app-docker-stop.sh / docker-rebuild.sh # full stack in Docker
+    app-docker-start.sh / app-docker-stop.sh / docker-rebuild-app.sh # full stack in Docker
     app-python.sh / app-python-once.sh / app-python-cleanup.sh   # whispercrawl locally via Python
-    services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh   # asr-webservice + ollama only
+    services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh / docker-rebuild-services.sh   # asr-webservice + ollama only
   prod/
     docker-compose.prod.yml             # whispercrawl only — URLs from environment variables
     setup.sh / service-start.sh / service-down.sh
     DEPLOY.md                           # production deployment guide
-deploy/dev/docker-build-prod.sh          # build + export image to deploy/prod/dist/
+deploy/dev/docker-export-prod.sh         # build + export image to deploy/prod/dist/
 ```
 
 All compose files mount the following into the container:
@@ -262,7 +262,7 @@ cd deploy/prod && bash service-start.sh
 On an internet-connected machine (run from the repo root):
 
 ```bash
-bash deploy/dev/docker-build-prod.sh
+bash deploy/dev/docker-export-prod.sh
 # builds whispercrawl:latest, exports to deploy/prod/dist/
 # also copies config.yaml into deploy/prod/
 ```
