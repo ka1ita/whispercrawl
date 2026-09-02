@@ -3,9 +3,9 @@
 # Services are exposed on localhost so config.yaml defaults (localhost:9000 / localhost:11434) work as-is.
 #
 # Usage:
-#   ./deploy/dev/start-python.sh              # run on schedule (default)
-#   ./deploy/dev/start-python.sh --once       # single pass
-#   ./deploy/dev/start-python.sh --once --dry-run
+#   ./deploy/dev/app-python.sh              # run on schedule (default)
+#   ./deploy/dev/app-python.sh --once       # single pass
+#   ./deploy/dev/app-python.sh --once --dry-run
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

@@ -206,12 +206,14 @@ deploy/
     .env.example                        # environment variable template (copy to .env here)
     docker-compose.dev.yml              # all three services in Docker
     docker-compose.services.yml         # whisper + ollama only (run whispercrawl locally)
-    start.sh / stop.sh / rebuild.sh / start-services.sh
+    app-docker-start.sh / app-docker-stop.sh / docker-rebuild.sh # full stack in Docker
+    app-python.sh / app-python-once.sh / app-python-cleanup.sh   # whispercrawl locally via Python
+    services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh   # whisper + ollama only
   prod/
     docker-compose.prod.yml             # whispercrawl only — URLs from environment variables
     setup.sh / service-start.sh / service-down.sh
     DEPLOY.md                           # production deployment guide
-deploy/dev/build-prod.sh                  # build + export image to deploy/prod/dist/
+deploy/dev/docker-build-prod.sh          # build + export image to deploy/prod/dist/
 ```
 
 All compose files mount the following into the container:
@@ -259,7 +261,7 @@ cd deploy/prod && bash service-start.sh
 On an internet-connected machine (run from the repo root):
 
 ```bash
-bash deploy/dev/build-prod.sh
+bash deploy/dev/docker-build-prod.sh
 # builds whispercrawl:latest, exports to deploy/prod/dist/
 # also copies config.yaml into deploy/prod/
 ```

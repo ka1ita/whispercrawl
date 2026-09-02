@@ -12,7 +12,7 @@ On the **build host** (internet-connected), export the image:
 
 ```bash
 # From repo root
-bash deploy/dev/build-prod.sh
+bash deploy/dev/docker-build-prod.sh
 ```
 
 This places `whispercrawl.tar` in `deploy/prod/dist/`. Transfer the entire `deploy/prod/` directory to the target host, then run setup:

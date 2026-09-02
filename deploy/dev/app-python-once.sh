@@ -2,8 +2,8 @@
 # Run WhisperCrawl locally via Python — single pass, then exit.
 #
 # Usage:
-#   ./deploy/dev/start-python-once.sh
-#   ./deploy/dev/start-python-once.sh --dry-run
+#   ./deploy/dev/app-python-once.sh
+#   ./deploy/dev/app-python-once.sh --dry-run
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
