@@ -62,7 +62,7 @@ result:
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
-  url: ${WHISPER_URL:http://whisper:9000}
+  url: ${ASR_WEBSERVICE_URL:http://asr-webservice:9000}
   language: ru                    # Default language: auto, ru, en, etc.
   diarize: true                   # Requires HF_TOKEN set in .env
   output_suffix: ""
@@ -71,9 +71,9 @@ transcription:
   # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
   # engines:
   #   - name: whisperx
-  #     url: http://whisper:9000
+  #     url: http://asr-webservice:9000
   #   - name: faster
-  #     url: http://whisper2:9000
+  #     url: http://asr-webservice2:9000
   #     diarize: false
 
 # ── Post-Processing ───────────────────────────────────────────────────────────

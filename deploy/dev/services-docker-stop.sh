@@ -10,4 +10,4 @@ ENV_ARGS=()
 [[ -f "$SCRIPT_DIR/.env" ]] && ENV_ARGS=(--env-file "$SCRIPT_DIR/.env")
 
 docker compose -f "$SCRIPT_DIR/docker-compose.services.yml" "${ENV_ARGS[@]}" down
-echo "External services stopped (whisper, whisper2, ollama)."
+echo "External services stopped (asr-webservice, asr-webservice2, ollama)."

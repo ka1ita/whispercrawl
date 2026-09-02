@@ -93,11 +93,11 @@ transcription:
   engines:
     - name: whisperx
       # localhost stalls multipart uploads on Windows (IPv6 ::1 → Docker Desktop
-      # proxy); use 127.0.0.1. The dev Docker stack overrides WHISPER_URL to
-      # http://whisper:9000 (internal network).
-      url: ${WHISPER_URL:http://127.0.0.1:9000}
+      # proxy); use 127.0.0.1. The dev Docker stack overrides ASR_WEBSERVICE_URL to
+      # http://asr-webservice:9000 (internal network).
+      url: ${ASR_WEBSERVICE_URL:http://127.0.0.1:9000}
     - name: gigaam
-      url: ${WHISPER2_URL:http://127.0.0.1:9001}   # stack overrides to http://whisper2:9000
+      url: ${ASR_WEBSERVICE2_URL:http://127.0.0.1:9001}   # stack overrides to http://asr-webservice2:9000
       # inherits diarize: true / speaker_timestamps: true from the base block
 
 # ── Post-Processing ───────────────────────────────────────────────────────────

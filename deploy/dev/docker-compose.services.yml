@@ -11,7 +11,7 @@ version: "3.9"
 
 services:
 
-  whisper:
+  asr-webservice:
     image: ${ASR_IMAGE:-asr-webservice:latest}   # mirrored from onerahmet/openai-whisper-asr-webservice; override ASR_IMAGE for an internal registry
     ports:
       - "9000:9000"
@@ -22,23 +22,23 @@ services:
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:
-      - whisper_cache:/root/.cache/whisper
+      - asr_webservice_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface   # persists pyannote diarization model
     restart: unless-stopped
 
-  whisper2:
+  asr-webservice2:
     image: ${ASR_IMAGE:-asr-webservice:latest}   # second ASR engine for comparison (EPIC-054)
     ports:
       - "9001:9000"
     environment:
       ASR_MODEL: ${ASR_MODEL2:-v1_rnnt}      # gigaam: v1_rnnt | v1_ctc | v2_rnnt | v2_ctc
-      ASR_ENGINE: ${ASR_ENGINE2:-gigaam}    # a different engine from `whisper` so the two results differ
+      ASR_ENGINE: ${ASR_ENGINE2:-gigaam}    # a different engine from `asr-webservice` so the two results differ
       ASR_REQUEST_LOGGING: ${ASR_REQUEST_LOGGING2:-true}
       HF_TOKEN: ${HF_TOKEN}
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true
     volumes:
-      - whisper2_cache:/root/.cache/whisper
+      - asr_webservice2_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface
     restart: unless-stopped
 
@@ -74,7 +74,7 @@ services:
     restart: "no"
 
 volumes:
-  whisper_cache:
-  whisper2_cache:
+  asr_webservice_cache:
+  asr_webservice2_cache:
   hf_cache:
   ollama_data:

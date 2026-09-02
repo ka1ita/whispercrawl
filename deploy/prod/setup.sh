@@ -73,7 +73,7 @@ fi
 echo ""
 echo "Setup complete. Next steps:"
 echo ""
-echo "  1. Edit .env — set WHISPER_URL and OLLAMA_URL to your service addresses."
+echo "  1. Edit .env — set ASR_WEBSERVICE_URL and OLLAMA_URL to your service addresses."
 echo ""
 echo "  2. Edit config.yaml — review language, model, schedule, and other settings."
 echo ""

@@ -35,7 +35,7 @@ pytest tests/test_file_walker.py
 ruff check src tests
 ruff format src tests
 
-# Start dev stack (two ASR engines: whisper :9000 + whisper2 :9001, ollama :11434;
+# Start dev stack (two ASR engines: asr-webservice :9000 + asr-webservice2 :9001, ollama :11434;
 # gemma3:1b is pulled automatically on first start). The stack mounts
 # deploy/dev/config.yaml — the dev config, which pre-wires both engines (EPIC-054).
 docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d
@@ -156,4 +156,4 @@ but with `transcription.engines` pre-wired to two ASR services (`whisperx` :9000
 The ASR service image is referenced as `asr-webservice:latest` (mirrored from the
 upstream `onerahmet/openai-whisper-asr-webservice:latest`). Every compose file
 resolves it via `${ASR_IMAGE:-asr-webservice:latest}` — set `ASR_IMAGE` in the
-env file to pull from an internal registry instead of loading `whisper.tar`.
+env file to pull from an internal registry instead of loading `asr-webservice.tar`.

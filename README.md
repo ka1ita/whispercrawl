@@ -49,7 +49,7 @@ mkdir -p audio logs
 docker compose -f deploy/dev/docker-compose.dev.yml up -d
 ```
 
-This starts two whisper-asr-webservice instances (`whisper` on port 9000 running `whisperx`, `whisper2` on 9001 running `gigaam`/`v1_rnnt` — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
+This starts two whisper-asr-webservice instances (`asr-webservice` on port 9000 running `whisperx`, `asr-webservice2` on 9001 running `gigaam`/`v1_rnnt` — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
 
 ```bash
 docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
@@ -68,11 +68,11 @@ docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemm
 To apply config changes to already-running containers:
 
 ```bash
-# Recreate only the whisper container (picks up new HF_TOKEN from .env)
-docker compose -f deploy/dev/docker-compose.dev.yml up -d --force-recreate whisper
+# Recreate only the asr-webservice container (picks up new HF_TOKEN from .env)
+docker compose -f deploy/dev/docker-compose.dev.yml up -d --force-recreate asr-webservice
 
 # Verify the token is visible inside the container
-docker compose -f deploy/dev/docker-compose.dev.yml exec whisper env | grep HF_TOKEN
+docker compose -f deploy/dev/docker-compose.dev.yml exec asr-webservice env | grep HF_TOKEN
 ```
 
 ### 3. Configure
@@ -204,12 +204,12 @@ Dockerfile                              # whispercrawl image (multi-stage, non-r
 deploy/
   dev/
     .env.example                        # environment variable template (copy to .env here)
-    config.yaml                         # dev config — two ASR engines wired (whisper :9000, whisper2 :9001)
-    docker-compose.dev.yml              # all services in Docker (whisper x2, ollama, whispercrawl)
-    docker-compose.services.yml         # whisper x2 + ollama only (run whispercrawl locally)
+    config.yaml                         # dev config — two ASR engines wired (asr-webservice :9000, asr-webservice2 :9001)
+    docker-compose.dev.yml              # all services in Docker (asr-webservice x2, ollama, whispercrawl)
+    docker-compose.services.yml         # asr-webservice x2 + ollama only (run whispercrawl locally)
     app-docker-start.sh / app-docker-stop.sh / docker-rebuild.sh # full stack in Docker
     app-python.sh / app-python-once.sh / app-python-cleanup.sh   # whispercrawl locally via Python
-    services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh   # whisper + ollama only
+    services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh   # asr-webservice + ollama only
   prod/
     docker-compose.prod.yml             # whispercrawl only — URLs from environment variables
     setup.sh / service-start.sh / service-down.sh
@@ -251,7 +251,7 @@ Config values written as `${VAR}` are expanded from the container's environment 
 
 ```bash
 mkdir -p audio logs
-cp .env.example .env          # edit: set WHISPER_URL and OLLAMA_URL
+cp .env.example .env          # edit: set ASR_WEBSERVICE_URL and OLLAMA_URL
 cd deploy/prod && bash service-start.sh
 ```
 

@@ -5,9 +5,9 @@
 #
 # Output:
 #   deploy/prod/dist/whispercrawl.tar          (whispercrawl only)
-#   deploy/prod-local/dist/whispercrawl.tar    \
-#   deploy/prod-local/dist/whisper.tar          > all-in-one bundle
-#   deploy/prod-local/dist/ollama.tar          /
+#   deploy/prod-local/dist/whispercrawl.tar     \
+#   deploy/prod-local/dist/asr-webservice.tar    > all-in-one bundle
+#   deploy/prod-local/dist/ollama.tar           /
 #   deploy/prod/config.yaml                    (current config snapshot)
 
 set -euo pipefail
@@ -47,14 +47,14 @@ docker tag "$ASR_SRC_IMAGE" "$ASR_IMAGE"
 
 # ── 3. Export images ──────────────────────────────────────────────────────────
 
-# deploy/prod — whispercrawl only (connects to external whisper + ollama)
+# deploy/prod — whispercrawl only (connects to external asr-webservice + ollama)
 echo "==> Saving whispercrawl:latest → deploy/prod/dist/whispercrawl.tar ..."
 docker save whispercrawl:latest -o "$PROD_DIST/whispercrawl.tar"
 
 # deploy/prod-local — all three images (all-in-one bundle)
 declare -A LOCAL_IMAGES=(
   ["whispercrawl.tar"]="whispercrawl:latest"
-  ["whisper.tar"]="$ASR_IMAGE"
+  ["asr-webservice.tar"]="$ASR_IMAGE"
   ["ollama.tar"]="$OLLAMA_IMAGE"
 )
 
@@ -71,8 +71,8 @@ cp "$REPO_ROOT/config.yaml" "$REPO_ROOT/deploy/prod/config.yaml"
 echo ""
 echo "Done."
 echo ""
-echo "  deploy/prod/dist/       — whispercrawl.tar only (connects to external whisper + ollama)"
-echo "  deploy/prod-local/dist/ — all three images (whisper + ollama + whispercrawl)"
+echo "  deploy/prod/dist/       — whispercrawl.tar only (connects to external asr-webservice + ollama)"
+echo "  deploy/prod-local/dist/ — all three images (asr-webservice + ollama + whispercrawl)"
 echo ""
 echo "Transfer the appropriate deploy/ subdirectory to the target host,"
 echo "then run bash setup.sh."

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run WhisperCrawl locally via Python against the dev two-engine config — single pass, then exit.
-# Start the ASR services first: ./deploy/dev/services-docker-start.sh (whisper :9000, whisper2 :9001).
+# Start the ASR services first: ./deploy/dev/services-docker-start.sh (asr-webservice :9000, asr-webservice2 :9001).
 #
 # Usage:
 #   ./deploy/dev/app-python-once.sh

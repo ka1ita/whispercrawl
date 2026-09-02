@@ -11,8 +11,8 @@ version: "3.9"
 
 services:
 
-  whisper:
-    image: ${ASR_IMAGE:-asr-webservice:latest}   # loaded from dist/whisper.tar by setup.sh; set ASR_IMAGE to a registry path to pull instead
+  asr-webservice:
+    image: ${ASR_IMAGE:-asr-webservice:latest}   # loaded from dist/asr-webservice.tar by setup.sh; set ASR_IMAGE to a registry path to pull instead
     environment:
       ASR_MODEL: ${ASR_MODEL:-small}    # tiny | base | small | medium | large
       ASR_ENGINE: whisperx
@@ -20,7 +20,7 @@ services:
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true            # enable after pyannote model is cached
     volumes:
-      - whisper_cache:/root/.cache/whisper
+      - asr_webservice_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface
     restart: unless-stopped
 
@@ -57,7 +57,7 @@ services:
     image: whispercrawl:latest
     environment:
       WATCH_DIR: /audio
-      WHISPER_URL: http://whisper:9000
+      ASR_WEBSERVICE_URL: http://asr-webservice:9000
       OLLAMA_URL: http://ollama:11434
       LOGS_DIR: /logs
     volumes:
@@ -66,13 +66,13 @@ services:
       - ./logs:/logs:Z
       - ./db:/db:Z
     depends_on:
-      whisper:
+      asr-webservice:
         condition: service_started
       ollama-init:
         condition: service_completed_successfully
     restart: unless-stopped
 
 volumes:
-  whisper_cache:
+  asr_webservice_cache:
   hf_cache:
   ollama_data:

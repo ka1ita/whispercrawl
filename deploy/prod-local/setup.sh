@@ -34,10 +34,10 @@ chmod 750 audio logs db
 
 echo "==> Loading Docker images from dist/ ..."
 
-# whisper.tar loads as asr-webservice:latest (the compose default). If ASR_IMAGE
+# asr-webservice.tar loads as asr-webservice:latest (the compose default). If ASR_IMAGE
 # in .env points at a reachable internal registry, this step is optional — the
-# whisper service will pull it instead.
-for TAR in whispercrawl.tar whisper.tar ollama.tar; do
+# asr-webservice service will pull it instead.
+for TAR in whispercrawl.tar asr-webservice.tar ollama.tar; do
   if [[ ! -f "dist/$TAR" ]]; then
     echo "ERROR: dist/$TAR not found." >&2
     echo "       Run docker-build-prod.sh on the build host and transfer the full deploy/prod-local/ directory." >&2

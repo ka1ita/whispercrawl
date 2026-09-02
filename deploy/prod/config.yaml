@@ -66,9 +66,9 @@ result:
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
-  url: ${WHISPER_URL:http://localhost:9000}   # whisper-asr-webservice base URL
+  url: ${ASR_WEBSERVICE_URL:http://localhost:9000}   # whisper-asr-webservice base URL
   language: ru                    # Default language: auto, ru, en, etc.
-  diarize: true                    # Enable speaker diarization (requires HF_TOKEN in whisper container for whisperx)
+  diarize: true                    # Enable speaker diarization (requires HF_TOKEN in the asr-webservice container for whisperx)
   output_suffix: ""                 # Suffix label (extension comes from formatter.format)
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
   speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time

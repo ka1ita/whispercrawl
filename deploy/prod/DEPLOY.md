@@ -40,7 +40,7 @@ Bind mounts are labeled `:Z` in `docker-compose.prod.yml` for SELinux-enforcing 
 
 ```bash
 # Service URLs (created by setup.sh from .env.example)
-vi .env          # set WHISPER_URL and OLLAMA_URL
+vi .env          # set ASR_WEBSERVICE_URL and OLLAMA_URL
 
 # Pipeline settings (language, model, schedule, etc.)
 vi config.yaml
@@ -183,7 +183,7 @@ deploy/prod/
   audio/              ← mount point for audio/video files (created by setup.sh)
   db/state.db         ← persisted processing index (auto-created; safe to delete)
   logs/               ← mount point for log output (created by setup.sh)
-  .env                ← WHISPER_URL, OLLAMA_URL, APP_UID/APP_GID (created from .env.example by setup.sh)
+  .env                ← ASR_WEBSERVICE_URL, OLLAMA_URL, APP_UID/APP_GID (created from .env.example by setup.sh)
   .env.example        ← template for .env
   config.yaml         ← pipeline configuration
   docker-compose.prod.yml
