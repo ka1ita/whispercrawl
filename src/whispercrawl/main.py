@@ -222,7 +222,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
 
     fmt = config.formatter.format
     cleaner = Cleaner(
-        config.cleanup, fmt,
+        fmt,
         engine_labels=[engine_label(e.name) for e in engines],
     )
 

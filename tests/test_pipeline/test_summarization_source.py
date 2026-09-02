@@ -36,7 +36,7 @@ class TestPickSummaryInput:
 
 def _minimal_config(tmp_path: Path, summarize_source: str, post_llm: bool = True) -> Config:
     from whispercrawl.config import (
-        CleanupConfig, LoggingConfig, ScheduleConfig,
+        LoggingConfig, ScheduleConfig,
     )
     return Config(
         watch_dir=tmp_path,
@@ -55,7 +55,6 @@ def _minimal_config(tmp_path: Path, summarize_source: str, post_llm: bool = True
         ),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

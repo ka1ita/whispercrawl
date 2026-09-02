@@ -2,7 +2,6 @@
 from pathlib import Path
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -24,7 +23,6 @@ def _config(watch_dir: Path, fmt: str = "txt", engine_names=None) -> Config:
         formatter=FormatterConfig(format=fmt),
         transcription=tr,
         dir_summarization=DirSummarizationConfig(underscore_prefix=True),
-        cleanup=CleanupConfig(on="success"),
         logging=LoggingConfig(),
     )
 

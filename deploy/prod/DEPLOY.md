@@ -83,7 +83,7 @@ bash service-down.sh
 Each processed file leaves one result (`<file>.<ext>`) and each directory one
 (`_<dirname>.<ext>`, one set per ASR engine). Cleanup removes those (in any
 formatter extension) and empties the processing index, without touching source
-audio:
+audio. It is not configurable — there is no `cleanup:` section:
 
 ```bash
 bash service-cleanup.sh

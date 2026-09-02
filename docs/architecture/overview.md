@@ -98,7 +98,6 @@ Key sub-configs:
 | `OllamaStepConfig` | Ollama connection, model, prompt — shared by postprocessing, file_summarization, dir_summarization |
 | `FormatterConfig` | Output format (`txt`/`html`/`md`), `enabled` flag, speaker label style |
 | `ResultConfig` | Consolidated-result assembly: section order/headings, heading level, separator (`result:`) |
-| `CleanupConfig` | `on` gate (`success` \| `always`) for `--cleanup` / `--once --cleanup` — it removes only the current-version consolidated results (EPIC-052) |
 | `ScheduleConfig` | Cron or interval schedule |
 | `StateConfig` | Processing-index location (`path`) — the index is always on and always stores transcript text (EPIC-051) |
 | `LoggingConfig` | App log file, request logging, diarization JSON dump (`<log_dir>/diarize/`) |
@@ -111,7 +110,7 @@ Wraps the main pipeline run in a cron-style schedule (APScheduler). Also support
 
 CLI entry point. Parses args, loads config, starts scheduler or runs once. Houses `output_path()` (path construction for cleanup) and `run_cleanup()`.
 
-CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be processed), `--cleanup` (delete outputs, optionally combined with `--once`), `--errors` (list failures recorded in the index; exits non-zero if any are outstanding), `--refresh` (single downstream-only pass from stored transcript text — see `state.py` above). Branch order in `main()`: `--cleanup` → `--errors` → `--refresh` → `--once`/`--dry-run` → scheduler.
+CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be processed), `--cleanup` (delete the current-version consolidated results and empty the processing index; not configurable — optionally combined with `--once`, where a file's result is removed only after every step for it succeeded), `--errors` (list failures recorded in the index; exits non-zero if any are outstanding), `--refresh` (single downstream-only pass from stored transcript text — see `state.py` above). Branch order in `main()`: `--cleanup` → `--errors` → `--refresh` → `--once`/`--dry-run` → scheduler.
 
 ## File Output Conventions
 

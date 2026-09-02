@@ -7,7 +7,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -139,7 +138,6 @@ def _html_config(tmp_path: Path) -> Config:
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -200,7 +198,6 @@ class TestFormatterDisabled:
             file_summarization=OllamaStepConfig(llm_enabled=False),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
         with patch(
@@ -228,7 +225,6 @@ class TestHtmlCleanup:
             watch_dir=tmp_path,
             extensions=[".mp3"],
             formatter=FormatterConfig(format="html"),
-            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
         run_cleanup(cfg)
@@ -247,7 +243,6 @@ class TestHtmlCleanup:
             watch_dir=tmp_path,
             extensions=[".mp3"],
             formatter=FormatterConfig(format="html"),
-            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
         run_cleanup(cfg)
@@ -268,7 +263,6 @@ def _txt_config(tmp_path: Path) -> Config:
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -312,7 +306,6 @@ class TestConsolidatedFileResult:
             file_summarization=OllamaStepConfig(llm_enabled=True),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -385,7 +378,6 @@ class TestDirSumAfterFormatter:
                 output_suffix="_sum",
             ),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -476,7 +468,6 @@ class TestConcatFormatterPass:
             file_summarization=OllamaStepConfig(llm_enabled=False),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -518,7 +509,6 @@ class TestDirResultCleanup:
             extensions=[".mp3"],
             formatter=FormatterConfig(format=fmt),
             dir_summarization=DirSummarizationConfig(),
-            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
 

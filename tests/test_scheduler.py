@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from whispercrawl.config import (
-    CleanupConfig, Config, DirSummarizationConfig, LoggingConfig,
+    Config, DirSummarizationConfig, LoggingConfig,
     OllamaStepConfig, ScheduleConfig, TranscriptionConfig,
 )
 from whispercrawl.scheduler import start_scheduler
@@ -23,7 +23,6 @@ def _config(tmp_path: Path, schedule: ScheduleConfig) -> Config:
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=schedule,
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

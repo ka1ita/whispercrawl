@@ -152,12 +152,12 @@ dir_summarization:
   timeout: 300
   # concat_suffix / output_suffix: deprecated no-ops since EPIC-047
 
-# ── Cleanup (--cleanup, or --once --cleanup) ─────────────────────────────────
-# Removes the consolidated result files this version writes (<file>.<ext> and
-# _<dirname>.<ext>, one set per ASR engine, any extension) and empties the
-# processing index. Pre-047 sidecars and _err.txt files are left alone.
-cleanup:
-  on: success
+# ── Cleanup ──────────────────────────────────────────────────────────────────
+# `whispercrawl --cleanup` (alone, or with `--once`) deletes the consolidated
+# result files this version writes (<file>.<ext> and _<dirname>.<ext>, one set
+# per ASR engine, any extension) and empties the processing index. It is not
+# configurable. Pre-047 sidecars and _err.txt files are left alone. With
+# `--once --cleanup` a file's result is removed only after every step succeeded.
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging:

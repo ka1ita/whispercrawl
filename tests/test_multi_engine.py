@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -36,7 +35,6 @@ def _config(tmp_path: Path, engine_names, *, fmt="txt", mode="per_file",
         file_summarization=OllamaStepConfig(llm_enabled=filesum),
         dir_summarization=DirSummarizationConfig(llm_enabled=dirsum),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -179,7 +177,6 @@ class TestCleanupPerEngine:
             run_pipeline(cfg)
         assert (tmp_path / "rec_a.txt").exists()
 
-        cfg.cleanup = CleanupConfig(on="success")
         run_cleanup(cfg)
 
         assert not (tmp_path / "rec_a.txt").exists()

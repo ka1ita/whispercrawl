@@ -105,18 +105,18 @@ class TestResultConfig:
         ))
         assert cfg is not None
 
-    def test_cleanup_targets_and_error_suffix_ignored_with_warning(self, tmp_path: Path, caplog):
+    def test_cleanup_section_and_error_suffix_ignored_with_warning(self, tmp_path: Path, caplog):
         import logging
 
         with caplog.at_level(logging.WARNING):
             cfg = load_config(_write(
                 tmp_path,
-                "cleanup:\n  targets: ['', _fix]\n"
+                "cleanup:\n  on: always\n  targets: ['', _fix]\n"
                 "transcription:\n  error_suffix: _oops\n",
             ))
-        assert not hasattr(cfg.cleanup, "targets")
+        assert not hasattr(cfg, "cleanup")
         assert not hasattr(cfg.transcription, "error_suffix")
-        assert "cleanup.targets is deprecated" in caplog.text
+        assert "cleanup: is deprecated and ignored since EPIC-053" in caplog.text
         assert "transcription.error_suffix is deprecated" in caplog.text
 
 

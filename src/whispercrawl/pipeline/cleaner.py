@@ -5,8 +5,6 @@ import logging
 from pathlib import Path
 from typing import List
 
-from whispercrawl.config import CleanupConfig
-
 logger = logging.getLogger(__name__)
 
 _ALL_EXTS = frozenset({".txt", ".md", ".html"})
@@ -15,11 +13,9 @@ _ALL_EXTS = frozenset({".txt", ".md", ".html"})
 class Cleaner:
     def __init__(
         self,
-        config: CleanupConfig,
         output_format: str = "txt",
         engine_labels: "List[str] | None" = None,
     ) -> None:
-        self.config = config
         # Filename segments for every configured ASR engine ("" = the single
         # implicit engine); the consolidated result is removed once per segment.
         self.engine_labels = engine_labels or [""]
@@ -45,8 +41,10 @@ class Cleaner:
                         logger.info("Removed stale format output: %s", out)
 
     def clean(self, file_path: Path, success: bool) -> None:
-        """Remove the consolidated result document for file_path after a run."""
-        if self.config.on == "success" and not success:
+        """Remove the consolidated result document for file_path after a
+        ``--once --cleanup`` run, but only when every step for the file
+        succeeded (a failed file writes no result to remove anyway)."""
+        if not success:
             return
         for label in self.engine_labels:
             output = file_path.with_name(file_path.stem + label + self._ext)

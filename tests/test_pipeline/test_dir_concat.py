@@ -11,7 +11,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -54,7 +53,6 @@ def _config(
             underscore_prefix=underscore_prefix,
         ),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

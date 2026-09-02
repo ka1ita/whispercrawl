@@ -5,7 +5,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     LoggingConfig,
@@ -52,7 +51,6 @@ def _config(
         file_summarization=OllamaStepConfig(llm_enabled=file_summarization, output_suffix="_sum"),
         dir_summarization=DirSummarizationConfig(llm_enabled=dir_summarization, output_suffix="_sum"),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -143,6 +141,36 @@ class TestPerFileErrors:
         assert _errors(tmp_path, "meeting.mp3") == []
         assert (tmp_path / "meeting.txt").exists()
 
+
+
+class TestOnceCleanup:
+    def test_success_then_cleanup_removes_the_result(self, tmp_path):
+        (tmp_path / "meeting.mp3").touch()
+
+        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()):
+            run_pipeline(_config(tmp_path), cleanup=True)
+
+        # --once --cleanup deletes the result it just produced (success gate met).
+        assert not (tmp_path / "meeting.txt").exists()
+        assert _errors(tmp_path) == []
+
+    def test_failed_file_has_nothing_to_clean_and_no_sidecar(self, tmp_path):
+        from whispercrawl.pipeline.postprocessor import PostProcessingError
+
+        (tmp_path / "meeting.mp3").touch()
+
+        with (
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch(
+                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                side_effect=PostProcessingError("boom"),
+            ),
+        ):
+            run_pipeline(_config(tmp_path, postprocessing=True), cleanup=True)
+
+        assert not (tmp_path / "meeting.txt").exists()
+        assert not (tmp_path / "meeting_err.txt").exists()
+        assert [r.step for r in _errors(tmp_path, "meeting.mp3")] == ["postprocess"]
 
 
 class TestDirErrors:

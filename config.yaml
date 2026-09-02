@@ -170,18 +170,17 @@ dir_summarization:
     Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  timeout: 300                      # HTTP timeout in seconds
+  timeout: 60                      # HTTP timeout in seconds
   # concat_suffix / output_suffix: deprecated no-ops since EPIC-047 (one dir result file)
 
-# ── Cleanup (--cleanup, or --once --cleanup) ────────────────────────────────
-# Removes the consolidated result files this version writes:
-#   <file>.<ext> and _<dirname>.<ext>  (one set per ASR engine, any formatter extension)
-# and empties the processing index. Pre-047 sidecars (_fix/_sum/_all/_concat) and
-# _err.txt files are left alone — delete those by hand when upgrading an old catalog.
-#   on: success — clean only when every pipeline step for the file succeeded
-#      always  — clean even after a failed step
-cleanup:
-  on: success
+# ── Cleanup ──────────────────────────────────────────────────────────────────
+# `whispercrawl --cleanup` (alone, or with `--once`) deletes the consolidated
+# result files this version writes — <file>.<ext> and _<dirname>.<ext>, one set
+# per ASR engine, any formatter extension — and empties the processing index.
+# It is not configurable. Pre-047 sidecars (_fix/_sum/_all/_concat) and _err.txt
+# files are left alone — delete those by hand when upgrading an old catalog.
+# With `--once --cleanup` a file's result is removed only after every pipeline
+# step for that file succeeded.
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging:

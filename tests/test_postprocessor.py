@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     LoggingConfig,
@@ -36,7 +35,6 @@ def _config(tmp_path: Path, replace_transcription: bool = False) -> Config:
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

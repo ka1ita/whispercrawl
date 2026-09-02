@@ -8,7 +8,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from whispercrawl.config import (
-    CleanupConfig,
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -42,7 +41,6 @@ def _config(
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

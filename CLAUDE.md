@@ -90,12 +90,15 @@ sidecar is ever written (EPIC-051/052).
 - `postprocessing.replace_transcription`, `file_summarization.output_suffix`,
   `dir_summarization.concat_suffix` / `output_suffix` (EPIC-047),
   `state.enabled` / `state.store_text` (EPIC-051), `cleanup.targets` and every
-  `*.error_suffix` (EPIC-052) are **deprecated no-ops** — config load logs a
-  WARNING and ignores them. `--cleanup` removes only the consolidated result
+  `*.error_suffix` (EPIC-052), and the whole `cleanup:` section (EPIC-053) are
+  **deprecated no-ops** — config load logs a WARNING and ignores them.
+  `--cleanup` (alone, or with `--once`) removes only the consolidated result
   files this version writes (`<file>.<ext>` / `_<dirname>.<ext>`, per engine,
-  any extension) and empties the index; pre-047 `_fix` / `_sum` / `_all` /
-  `_concat` files and `_err.txt` leftovers are an operator concern (delete by
-  hand when upgrading an old catalog).
+  any extension) and empties the index — it is not configurable; with
+  `--once --cleanup` a file's result is removed only after every step for it
+  succeeded. Pre-047 `_fix` / `_sum` / `_all` / `_concat` files and `_err.txt`
+  leftovers are an operator concern (delete by hand when upgrading an old
+  catalog).
 - Output files sit **beside** the source audio/video file.
 - A result is only written on **success** of every step for that file.
 - **Language detection**: filename suffix `_ru`, `_en`, or `_auto` overrides the config default language passed to whisper.

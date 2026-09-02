@@ -145,8 +145,6 @@ whispercrawl --config config.yaml --once
 | | `enabled` | `true` | `false` = skip format conversion; files stay as `.txt` |
 | | `speaker_style` | `bold` | Speaker label emphasis (html/md only): `bold` \| `italic` \| `plain` |
 | | `text_placement` | `same_line` | Transcript placement after speaker label: `same_line` \| `new_line` |
-| `cleanup` | `targets` | `"" _fix _sum _diarize.json` | Output label suffixes to remove on cleanup |
-| | `on` | `success` | `success` = only clean after full success; `always` = clean regardless |
 | `logging` | `app_log_file` | *(console only)* | Path to rotating application log file |
 | | `app_log_level` | `INFO` | `DEBUG` \| `INFO` \| `WARNING` \| `ERROR` |
 | | `requests` | `false` | Write structured ndjson log of all HTTP calls |

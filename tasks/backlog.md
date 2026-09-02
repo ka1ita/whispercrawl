@@ -4,6 +4,19 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-053: Remove the `cleanup:` Config Section — Drop `CleanupConfig` / `cleanup.on`
+
+_Depends on EPIC-052. See [epics/EPIC-053-remove-cleanup-config-section.md](../epics/EPIC-053-remove-cleanup-config-section.md). Landed 2026-09-02._
+
+- [x] `config.py`: removed `CleanupConfig` and `Config.cleanup`; dropped the `cleanup=_build(...)` line in `load_config`; a `cleanup:` key of any shape now logs one deprecation WARNING (EPIC-053, 2026-09-02)
+- [x] `pipeline/cleaner.py`: `Cleaner.__init__` drops the `config` param; `clean()` gates inline on `success` (no `on == "always"` path); `CleanupConfig` import removed (EPIC-053, 2026-09-02)
+- [x] `main.py` `_run_pipeline()`: `Cleaner(fmt, engine_labels=...)` — no `config.cleanup` argument; `run_cleanup()` unchanged (EPIC-053, 2026-09-02)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: `cleanup:` block deleted, replaced with a descriptive comment only (EPIC-053, 2026-09-02)
+- [x] Docs: `CLAUDE.md` `--cleanup` sentence, `docs/architecture/overview.md` (`CleanupConfig` row + `--cleanup` prose), `README.md` config table, new `ADR-007-cleanup-not-configurable.md`, `deploy/*/DEPLOY.md` cleanup sections — no `cleanup:` config / `cleanup.on` mention (EPIC-053, 2026-09-02)
+- [x] Tests: `test_config.py` (no `Config().cleanup`; stale `cleanup:` → deprecation WARNING), `test_cleaner.py` rewritten to the new signature, `test_pipeline_err_cleanup.py` gains `--once --cleanup` cases, bulk-removed every `CleanupConfig` / `cleanup=` / `config.cleanup` hit; full suite green (451) (EPIC-053, 2026-09-02)
+
+---
+
 ## EPIC-052: Cleanup Removes Only the Current Version's Outputs — Drop `error_suffix` and Legacy `cleanup.targets`
 
 _Depends on EPIC-051. See [epics/EPIC-052-cleanup-current-outputs-only.md](../epics/EPIC-052-cleanup-current-outputs-only.md). Landed 2026-09-02._

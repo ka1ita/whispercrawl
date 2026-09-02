@@ -78,15 +78,6 @@ class ScheduleConfig:
 
 
 @dataclass
-class CleanupConfig:
-    # ``--cleanup`` removes only the consolidated result files this version
-    # writes (``<file>.<ext>`` / ``_<dirname>.<ext>``, one set per engine) plus
-    # stale-extension copies, and empties the processing index. Pre-047 sidecars
-    # and ``_err.txt`` files are an operator concern (EPIC-052).
-    on: str = "success"  # "success" | "always" — clean only after full success, or always
-
-
-@dataclass
 class DirSummarizationConfig(OllamaStepConfig):
     concat_source: str = "postprocessed"  # "postprocessed" | "original"
     underscore_prefix: bool = False        # true → output files named _<dirname>_...
@@ -150,7 +141,6 @@ class Config:
     file_summarization: OllamaStepConfig = field(default_factory=lambda: OllamaStepConfig(output_suffix="_sum"))
     dir_summarization: DirSummarizationConfig = field(default_factory=lambda: DirSummarizationConfig(output_suffix="_sum"))
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
-    cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     result: ResultConfig = field(default_factory=ResultConfig)
 
@@ -217,7 +207,6 @@ def load_config(path: Path) -> Config:
         ("dir_summarization", "output_suffix", _epic_047),
         ("state", "enabled", "EPIC-051 (the processing index is always enabled)"),
         ("state", "store_text", "EPIC-051 (the processing index always stores transcript text)"),
-        ("cleanup", "targets", "EPIC-052 (cleanup always targets the one consolidated result file)"),
         ("transcription", "error_suffix", _epic_052_err),
         ("postprocessing", "error_suffix", _epic_052_err),
         ("file_summarization", "error_suffix", _epic_052_err),
@@ -225,6 +214,13 @@ def load_config(path: Path) -> Config:
     ):
         if isinstance(raw.get(_sect), dict) and _fld in raw[_sect]:
             logger.warning("%s.%s is deprecated and ignored since %s", _sect, _fld, _since)
+
+    if "cleanup" in raw:
+        logger.warning(
+            "cleanup: is deprecated and ignored since EPIC-053 (the --cleanup sweep "
+            "is not configurable; it removes the consolidated result files this "
+            "version writes and empties the processing index)"
+        )
 
     tr_raw = dict(raw.get("transcription", {}) or {})
     engine_entries = tr_raw.pop("engines", None) or []
@@ -274,7 +270,6 @@ def load_config(path: Path) -> Config:
         file_summarization=_build(OllamaStepConfig, raw.get("file_summarization", {})),
         dir_summarization=dir_sum_cfg,
         schedule=_build(ScheduleConfig, sched_raw),
-        cleanup=_build(CleanupConfig, raw.get("cleanup", {})),
         logging=_build(LoggingConfig, raw.get("logging", {})),
         result=result_cfg,
     )

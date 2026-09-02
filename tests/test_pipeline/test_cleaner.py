@@ -1,7 +1,7 @@
-"""Tests for pipeline Cleaner — removes only the consolidated result (EPIC-052)."""
+"""Tests for pipeline Cleaner — removes only the consolidated result, not
+configurable (EPIC-052 / EPIC-053)."""
 from pathlib import Path
 
-from whispercrawl.config import CleanupConfig
 from whispercrawl.pipeline.cleaner import Cleaner
 
 
@@ -11,13 +11,13 @@ def _result(audio: Path, ext=".txt", label="") -> Path:
     return p
 
 
-class TestCleanerOnSuccess:
+class TestCleanerSuccessGate:
     def test_removes_result_on_success(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
         result = _result(audio)
 
-        Cleaner(CleanupConfig(on="success")).clean(audio, success=True)
+        Cleaner().clean(audio, success=True)
 
         assert not result.exists()
 
@@ -26,20 +26,9 @@ class TestCleanerOnSuccess:
         audio.touch()
         result = _result(audio)
 
-        Cleaner(CleanupConfig(on="success")).clean(audio, success=False)
+        Cleaner().clean(audio, success=False)
 
         assert result.exists()
-
-
-class TestCleanerOnAlways:
-    def test_removes_on_failure(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        result = _result(audio)
-
-        Cleaner(CleanupConfig(on="always")).clean(audio, success=False)
-
-        assert not result.exists()
 
 
 class TestCleanerScope:
@@ -52,7 +41,7 @@ class TestCleanerScope:
         fix.write_text("f")
         err.write_text("e")
 
-        Cleaner(CleanupConfig(on="success")).clean(audio, success=True)
+        Cleaner().clean(audio, success=True)
 
         assert not result.exists()
         assert fix.exists()
@@ -61,7 +50,7 @@ class TestCleanerScope:
     def test_missing_result_is_silently_skipped(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        Cleaner(CleanupConfig(on="always")).clean(audio, success=True)
+        Cleaner().clean(audio, success=True)
 
     def test_html_format_removes_only_html_result(self, tmp_path):
         audio = tmp_path / "call.mp3"
@@ -69,7 +58,7 @@ class TestCleanerScope:
         html = _result(audio, ext=".html")
         txt = _result(audio, ext=".txt")
 
-        Cleaner(CleanupConfig(on="success"), output_format="html").clean(audio, success=True)
+        Cleaner(output_format="html").clean(audio, success=True)
 
         assert not html.exists()
         assert txt.exists()
@@ -80,7 +69,7 @@ class TestCleanerScope:
         a = _result(audio, label="_a")
         b = _result(audio, label="_b")
 
-        Cleaner(CleanupConfig(on="success"), engine_labels=["_a", "_b"]).clean(audio, success=True)
+        Cleaner(engine_labels=["_a", "_b"]).clean(audio, success=True)
 
         assert not a.exists()
         assert not b.exists()
