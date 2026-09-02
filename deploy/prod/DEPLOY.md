@@ -154,9 +154,21 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
   file from the stored transcript, with the current `config.yaml`, and **without a single whisper
   call** — the fast way to apply a new fix prompt, summary model, or output format. A file whose
-  source changed, or that has no stored transcript, is skipped (no `_err.txt`). Needs
+  source changed, or that has no stored transcript, is skipped. Needs
   `state.enabled: true` and `state.store_text: true`; changing `transcription:` settings still
   requires `rescan: true`.
+- **Checking for failures.** A failing step no longer writes a `<file>_err.txt` beside the audio —
+  it records the error in the index. List outstanding failures with:
+
+  ```bash
+  docker compose -f docker-compose.prod.yml run --rm whispercrawl --errors
+  ```
+
+  It prints each failure grouped by path and **exits non-zero** when any are outstanding (zero when
+  the index is clean) — suitable for a cron/monitoring wrapper. A failure clears itself once that
+  file / directory next completes successfully. On upgrade from a pre-EPIC-049 build, run
+  `--once --cleanup` (or `--errors` first to review) to sweep the leftover `_err.txt` files. With
+  `state.enabled: false` the `<file>_err.txt` sidecar behavior is unchanged.
 
 ---
 

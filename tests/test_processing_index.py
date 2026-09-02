@@ -53,6 +53,14 @@ def _transcripts(tmp_path: Path) -> set[str]:
     return {p.name for p in tmp_path.glob("*.txt") if p.stem != tmp_path.name}
 
 
+def _has_error(tmp_path: Path, rel: str) -> bool:
+    """True when the processing index holds a failure row for ``rel`` (EPIC-049)."""
+    from whispercrawl.state import ProcessingState
+
+    with ProcessingState.open(tmp_path / "db" / "state.db") as st:
+        return bool(st.get_errors(rel))
+
+
 def _make_files(tmp_path: Path, names: list[str]) -> None:
     """Create media files with strictly increasing mtimes (names[-1] is newest)."""
     now = time.time()
@@ -103,7 +111,8 @@ class TestResumability:
         # newest-first order: e, d, c, b, a — fail on the 3rd (c)
         first = _run(_config(tmp_path), fail_on={"c.mp3"})
         assert first == ["e.mp3", "d.mp3", "c.mp3", "b.mp3", "a.mp3"]
-        assert (tmp_path / "c_err.txt").exists()
+        assert _has_error(tmp_path, "c.mp3")
+        assert not (tmp_path / "c_err.txt").exists()
 
         # second run: e and d are done → not re-transcribed; c retried, plus b/a already have .txt
         second = _run(_config(tmp_path))
@@ -166,10 +175,11 @@ class TestStepResume:
 
         assert transcribe_calls == ["a.mp3"]
         assert postprocess_calls == ["a.mp3"]
-        # a failed step → nothing beside the audio except the error file
+        # a failed step → nothing beside the audio; the failure is in the index
         assert not (tmp_path / "a.txt").exists()
         assert not (tmp_path / "a_fix.txt").exists()
-        assert (tmp_path / "a_err.txt").exists()
+        assert not (tmp_path / "a_err.txt").exists()
+        assert _has_error(tmp_path, "a.mp3")
 
         def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
             postprocess_calls.append(source_path.name)

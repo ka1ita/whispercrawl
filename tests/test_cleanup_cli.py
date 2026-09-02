@@ -155,6 +155,22 @@ class TestRunCleanupErrFiles:
 
         assert err.exists()
 
+    def test_removes_legacy_sidecar_and_clears_error_rows(self, tmp_path):
+        """EPIC-049: --cleanup sweeps a pre-049 _err.txt and empties the index errors table."""
+        from whispercrawl.state import ProcessingState
+
+        (tmp_path / "call.mp3").touch()
+        legacy = _touch(tmp_path / "call_err.txt")
+        db = tmp_path / "db" / "state.db"
+        with ProcessingState.open(db) as st:
+            st.record_error("call.mp3", "transcribe", "boom")
+
+        run_cleanup(_config(tmp_path))
+
+        assert not legacy.exists()
+        with ProcessingState.open(db) as st:
+            assert st.get_errors() == []
+
 
 class TestRunCleanupMdFormat:
     def test_removes_md_output_files(self, tmp_path):

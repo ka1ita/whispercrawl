@@ -42,6 +42,8 @@ An index left at the pre-EPIC-043 location (`<watch_dir>/.whispercrawl/state.db`
 
 **Stored transcript text and `--refresh`.** When `state.store_text` is true (the default), the `asr_results` table holds each file's raw ASR transcript and post-processed text — one row per `(path, engine, kind)`, keyed to the file's `mtime`/`size`. This keeps the one slow, non-deterministic output — the ASR result — even after the on-disk result is post-processed over or converted to `.md`/`.html`, and it powers `whispercrawl --refresh`: a single pass that re-runs every step *downstream* of ASR (post-process → per-file summary → per-directory concat/summary → compose → format) from the stored transcript, with the current config and **zero** whisper calls. It is the fast path for iterating on the fix prompt, the summary model, the `result:` section, or the output format. `--refresh` visits every media file that passes the `skip_marker` / `max_age_days` / `max_files_per_run` traversal filters (the index skip is bypassed) and honors `processing_mode`; per engine, a file with no stored transcript for that engine is logged and skipped with no `_err.txt`. After a successful `--refresh` the file's steps are re-marked complete, so a later normal run skips it. A changed `mtime`/`size` invalidates the stored text (`mark_step`'s reset deletes the file's `asr_results` rows) — a normal run re-transcribes, `--refresh` skips. `--refresh` requires `state.enabled: true` and `state.store_text: true`; changing `transcription` settings (`diarize`, `language`, `speaker_timestamps`, …) still needs a real re-transcribe via `rescan: true`.
 
+**Recorded errors (EPIC-049).** The `errors` table holds one row per failing pipeline step — `(path, engine, scope, step)` where `scope` is `file` or `dir` — with the full exception message. This replaces the `<file>_err.txt` sidecar: a step failure records a row and leaves nothing beside the audio, the row is cleared when that file / directory next succeeds, and `mark_step`'s `mtime`/`size` reset drops it along with the stale `asr_results` rows. `whispercrawl --errors` prints the outstanding rows grouped by path and exits non-zero when any exist. Only with `state.enabled: false` is the `<file>_err.txt` sidecar written as a fallback.
+
 Every run has at least one ASR engine (`config.transcription.engines`, always a non-empty list — a lone `transcription:` block becomes the single engine with `name == ""`). Multiple engines get their own `asr_results` rows and `step:<engine>` tokens; see [EPIC-048](../../epics/EPIC-048-multiple-asr-engines.md).
 
 ### Processing mode (`processing_mode`)
@@ -81,8 +83,9 @@ Per-file result: `<file>.<ext>` — `result.file_sections` (summary then transcr
 body; the body is the post-processed text when post-processing ran, else the raw
 transcript). Per-directory result: `_<dirname>.<ext>` (or `<dirname>.<ext>` when
 `dir_summarization.underscore_prefix: false`) — `result.dir_sections` (dir summary
-then every transcript concatenated with filename headers). `_err.txt` is the only
-remaining sidecar and only on failure.
+then every transcript concatenated with filename headers). Failures are recorded
+in the processing index (`errors` table), not written beside the audio — unless
+`state.enabled: false`, where a `<file>_err.txt` sidecar is the fallback.
 
 ### `config.py`
 
@@ -109,14 +112,14 @@ Wraps the main pipeline run in a cron-style schedule (APScheduler). Also support
 
 CLI entry point. Parses args, loads config, starts scheduler or runs once. Houses `output_path()` (path construction for cleanup) and `run_cleanup()`.
 
-CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be processed), `--cleanup` (delete outputs, optionally combined with `--once`), `--refresh` (single downstream-only pass from stored transcript text — see `state.py` above). Branch order in `main()`: `--cleanup` → `--refresh` → `--once`/`--dry-run` → scheduler.
+CLI flags: `--once` (single run, no schedule), `--dry-run` (log what would be processed), `--cleanup` (delete outputs, optionally combined with `--once`), `--errors` (list failures recorded in the index; exits non-zero if any are outstanding), `--refresh` (single downstream-only pass from stored transcript text — see `state.py` above). Branch order in `main()`: `--cleanup` → `--errors` → `--refresh` → `--once`/`--dry-run` → scheduler.
 
 ## File Output Conventions
 
 - Output files sit **beside** the source audio/video file.
 - One consolidated result per audio file (`<file>.<ext>`) and one per directory (`_<dirname>.<ext>`); no `_fix`/`_sum`/`_all`/`_concat` sidecars (EPIC-047).
 - The composed result is assembled as plain `.txt`, then `Formatter.format_file()` converts it to `.md`/`.html` and removes the `.txt`.
-- A result is written only on **success** of every step for that file — otherwise only `_err.txt` (always `.txt`, never converted), which is removed on the next success.
+- A result is written only on **success** of every step for that file — otherwise the failure is recorded in the index `errors` table (or, with `state.enabled: false`, a `<file>_err.txt` sidecar) and cleared on the next success.
 - Language is inferred from filename suffix `_ru`/`_en`/`_auto`; falls back to config default.
 
 ### Output format (`formatter.format`)
@@ -140,4 +143,6 @@ Non-diarized files (no `[SPEAKER_XX …]` lines) are converted without modificat
 
 ## Error Handling Strategy
 
-Each pipeline step catches its own exceptions and writes `<source>_err.txt` with the error detail. The pipeline continues to the next file — a single failure does not halt the run. After successful completion of all steps for a file, any pre-existing `_err.txt` for that file is removed.
+Each pipeline step catches its own exceptions and records the failure in the processing index: `files.status = 'error'` plus an `errors` row per failing step and engine (`scope` `file` or `dir`, the full message). The pipeline continues to the next file — a single failure does not halt the run, and one engine failing does not block the others. The row is cleared when that file / directory next completes successfully, and dropped when the source file changes (mtime/size). `whispercrawl --errors` prints the outstanding rows grouped by path and exits non-zero when any exist; `whispercrawl --cleanup` sweeps pre-EPIC-049 `_err.txt` leftovers and empties the table.
+
+When `state.enabled: false` there is no index to write to, so each step falls back to a `<source>_err.txt` sidecar (always `.txt`, never converted), removed on the next full success — the pre-049 behavior.

@@ -90,13 +90,20 @@ class TestConsolidatedResult:
         assert (tmp_path / "a.txt").read_text(encoding="utf-8") == FIXED
         assert not (tmp_path / "a_fix.txt").exists()
 
-    def test_postprocess_failure_writes_err_and_no_result(self, tmp_path):
+    def test_postprocess_failure_records_error_and_no_result(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
         _run(_config(tmp_path), _make_transcriber(), _make_postprocessor_failing("boom"))
 
         assert not (tmp_path / "a_fix.txt").exists()
-        assert (tmp_path / "a_err.txt").exists()
+        assert not (tmp_path / "a_err.txt").exists()  # no sidecar (EPIC-049)
         assert not (tmp_path / "a.txt").exists()  # a failed step → no consolidated result
+
+        from whispercrawl.state import ProcessingState
+
+        with ProcessingState.open(tmp_path / "db" / "state.db") as st:
+            errs = st.get_errors("a.mp3")
+        assert [e.step for e in errs] == ["postprocess"]
+        assert "boom" in errs[0].message
 
 
 class TestReplaceTranscriptionDeprecated:

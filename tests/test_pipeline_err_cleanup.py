@@ -1,10 +1,8 @@
-﻿"""Tests for _err.txt cleanup after successful pipeline execution."""
+"""Failures are recorded in the processing index, not in _err.txt sidecars (EPIC-049)."""
 from __future__ import annotations
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from whispercrawl.config import (
     CleanupConfig,
@@ -13,9 +11,11 @@ from whispercrawl.config import (
     LoggingConfig,
     OllamaStepConfig,
     ScheduleConfig,
+    StateConfig,
     TranscriptionConfig,
 )
 from whispercrawl.main import run_pipeline
+from whispercrawl.state import ProcessingState
 
 
 def _ok_response(text: str = "transcribed") -> MagicMock:
@@ -35,11 +35,19 @@ def _err_response() -> MagicMock:
     return r
 
 
-def _config(tmp_path: Path, *, postprocessing=False, file_summarization=False, dir_summarization=False) -> Config:
+def _config(
+    tmp_path: Path,
+    *,
+    postprocessing=False,
+    file_summarization=False,
+    dir_summarization=False,
+    state_enabled=True,
+) -> Config:
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=True,
+        state=StateConfig(enabled=state_enabled),
         transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
         postprocessing=OllamaStepConfig(llm_enabled=postprocessing, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=file_summarization, output_suffix="_sum"),
@@ -50,78 +58,112 @@ def _config(tmp_path: Path, *, postprocessing=False, file_summarization=False, d
     )
 
 
-class TestPerFileErrCleanup:
-    def test_err_removed_after_full_success(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        err = tmp_path / "meeting_err.txt"
-        err.write_text("previous error", encoding="utf-8")
+def _errors(tmp_path: Path, rel: str | None = None):
+    with ProcessingState.open(tmp_path / "db" / "state.db") as st:
+        return st.get_errors(rel)
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()):
-            run_pipeline(_config(tmp_path))
 
-        assert not err.exists()
-        assert (tmp_path / "meeting.txt").exists()
-
-    def test_no_err_file_is_no_op(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
+class TestPerFileErrors:
+    def test_no_sidecar_and_row_cleared_after_full_success(self, tmp_path):
+        (tmp_path / "meeting.mp3").touch()
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()):
             run_pipeline(_config(tmp_path))
 
         assert not (tmp_path / "meeting_err.txt").exists()
+        assert (tmp_path / "meeting.txt").exists()
+        assert _errors(tmp_path) == []
 
-    def test_err_preserved_when_postprocessing_fails(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        err = tmp_path / "meeting_err.txt"
-        err.write_text("previous error", encoding="utf-8")
+    def test_postprocessing_failure_records_row_no_sidecar(self, tmp_path):
+        from whispercrawl.pipeline.postprocessor import PostProcessingError
+
+        (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()),
-            patch("whispercrawl.pipeline.postprocessor.httpx.post", return_value=_err_response()),
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch(
+                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                side_effect=PostProcessingError("boom"),
+            ),
         ):
             run_pipeline(_config(tmp_path, postprocessing=True))
 
-        assert err.exists()
+        assert not (tmp_path / "meeting_err.txt").exists()
+        rows = _errors(tmp_path, "meeting.mp3")
+        assert [r.step for r in rows] == ["postprocess"]
+        assert rows[0].scope == "file"
 
-    def test_err_preserved_when_file_summarization_fails(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        err = tmp_path / "meeting_err.txt"
-        err.write_text("previous error", encoding="utf-8")
+    def test_file_summarization_failure_records_row(self, tmp_path):
+        from whispercrawl.pipeline.summarizer import SummarizationError
+
+        (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_err_response()),
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch(
+                "whispercrawl.pipeline.summarizer.Summarizer.summarize_file",
+                side_effect=SummarizationError("boom"),
+            ),
         ):
             run_pipeline(_config(tmp_path, file_summarization=True))
 
-        assert err.exists()
+        assert not (tmp_path / "meeting_err.txt").exists()
+        assert [r.step for r in _errors(tmp_path, "meeting.mp3")] == ["file_summarize"]
 
-    def test_transcription_failure_does_not_remove_err(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        err = tmp_path / "meeting_err.txt"
-        err.write_text("previous error", encoding="utf-8")
+    def test_transcription_failure_records_row(self, tmp_path):
+        (tmp_path / "meeting.mp3").touch()
 
         with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_err_response()):
             run_pipeline(_config(tmp_path))
 
-        assert err.exists()
+        assert not (tmp_path / "meeting_err.txt").exists()
+        assert [r.step for r in _errors(tmp_path, "meeting.mp3")] == ["transcribe"]
+
+    def test_fixing_the_failure_clears_the_row(self, tmp_path):
+        from whispercrawl.pipeline.postprocessor import PostProcessingError
+
+        (tmp_path / "meeting.mp3").touch()
+        cfg = _config(tmp_path, postprocessing=True)
+
+        with (
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch(
+                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                side_effect=PostProcessingError("boom"),
+            ),
+        ):
+            run_pipeline(cfg)
+        assert _errors(tmp_path, "meeting.mp3")
+
+        with (
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", return_value="fixed"),
+        ):
+            run_pipeline(cfg)
+
+        assert _errors(tmp_path, "meeting.mp3") == []
+        assert (tmp_path / "meeting.txt").exists()
+
+    def test_disabled_index_falls_back_to_sidecar(self, tmp_path):
+        from whispercrawl.pipeline.postprocessor import PostProcessingError
+
+        (tmp_path / "meeting.mp3").touch()
+
+        with (
+            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch(
+                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                side_effect=PostProcessingError("boom"),
+            ),
+        ):
+            run_pipeline(_config(tmp_path, postprocessing=True, state_enabled=False))
+
+        assert (tmp_path / "meeting_err.txt").exists()
 
 
-class TestDirSummaryErrCleanup:
-    # Patch at method level to avoid httpx.post conflicts between transcriber and summarizer
-    # (both modules share the same httpx module object, so patching via either path
-    # modifies the same attribute and the second patch wins).
-
-    def test_dir_err_removed_after_dir_summary_success(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        dir_err = tmp_path / (tmp_path.name + "_err.txt")
-        dir_err.write_text("previous dir error", encoding="utf-8")
+class TestDirErrors:
+    def test_dir_summary_success_leaves_no_row_or_sidecar(self, tmp_path):
+        (tmp_path / "meeting.mp3").touch()
 
         with (
             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
@@ -129,14 +171,13 @@ class TestDirSummaryErrCleanup:
         ):
             run_pipeline(_config(tmp_path, dir_summarization=True))
 
-        assert not dir_err.exists()
+        assert not (tmp_path / (tmp_path.name + "_err.txt")).exists()
+        assert _errors(tmp_path) == []
 
-    def test_dir_err_written_on_dir_summary_failure(self, tmp_path):
+    def test_dir_summary_failure_records_dir_scoped_row(self, tmp_path):
         from whispercrawl.pipeline.summarizer import SummarizationError
 
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-        dir_err = tmp_path / (tmp_path.name + "_err.txt")
+        (tmp_path / "meeting.mp3").touch()
 
         with (
             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
@@ -147,16 +188,6 @@ class TestDirSummaryErrCleanup:
         ):
             run_pipeline(_config(tmp_path, dir_summarization=True))
 
-        assert dir_err.exists()
-
-    def test_no_dir_err_file_is_no_op(self, tmp_path):
-        audio = tmp_path / "meeting.mp3"
-        audio.touch()
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="dir summary"),
-        ):
-            run_pipeline(_config(tmp_path, dir_summarization=True))
-
         assert not (tmp_path / (tmp_path.name + "_err.txt")).exists()
+        rows = _errors(tmp_path, ".")
+        assert [(r.scope, r.step) for r in rows] == [("dir", "dir_summarize")]

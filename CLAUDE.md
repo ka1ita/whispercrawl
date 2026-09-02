@@ -72,8 +72,11 @@ after all files in a directory:
   → Summarizer + Composer + Formatter → _<dirname>.<ext>   (dir summary + concat)
 ```
 
-Each step is independent and skippable. On any step's failure, only `<file>_err.txt`
-is written (no partial result) and processing continues with the next file.
+Each step is independent and skippable. On any step's failure nothing is written
+beside the audio (no partial result); the failure is recorded in the processing
+index (`status='error'` + an `errors` row per failing step/engine) and processing
+continues with the next file. `whispercrawl --errors` lists them. Only when
+`state.enabled: false` is a `<file>_err.txt` sidecar written instead.
 
 ### Key Conventions
 
@@ -82,8 +85,8 @@ is written (no partial result) and processing continues with the next file.
   The raw ASR transcript and intermediate post-processed text live in the
   processing index, not beside the audio. The `result:` config section controls
   section order/headings (`file_sections`, `dir_sections`, `*_heading`,
-  `heading_level`, `separator`, `include_missing_headings`). `_err.txt` is the
-  only remaining sidecar and only on failure (removed on the next success).
+  `heading_level`, `separator`, `include_missing_headings`). Failures are recorded
+  in the index, not on disk (EPIC-049) — no sidecars unless `state.enabled: false`.
 - `postprocessing.replace_transcription`, `file_summarization.output_suffix`,
   `dir_summarization.concat_suffix` / `output_suffix` are **deprecated no-ops**
   since EPIC-047 (config load logs a WARNING). `--cleanup` sweeps the legacy
@@ -93,10 +96,11 @@ is written (no partial result) and processing continues with the next file.
 - **Language detection**: filename suffix `_ru`, `_en`, or `_auto` overrides the config default language passed to whisper.
 - **Skip mode** (`rescan: false`): if `<file>.<ext>` already exists (any format), that file is skipped entirely.
 - **Persisted index** (`state.enabled: true`, default): `<config dir>/db/state.db` (SQLite) — a dedicated `db/` directory beside `config.yaml` (`/db/state.db` in the container, its own bind mount). Records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. A legacy `<watch_dir>/.whispercrawl/state.db` is moved here automatically on first run. `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
+- **Recorded errors** (EPIC-049): a failing step writes an `errors` row (`path`, `engine`, `scope` `file`/`dir`, `step`, message) instead of a `<file>_err.txt` sidecar; the row is cleared when that file/dir next succeeds, and dropped when the source file changes. `whispercrawl --errors` prints outstanding failures grouped by path and exits non-zero if any exist. `--cleanup` sweeps pre-049 `_err.txt` leftovers and empties the `errors` table. With `state.enabled: false` the `<file>_err.txt` sidecar is the fallback.
 - **Per-step resume**: the index also records which pipeline step (transcribe/postprocess/file-summarize) last completed for each file's current mtime/size. An interrupted run resumes mid-file — already-written step outputs are read back from disk instead of re-calling whisper/ollama — rather than restarting the whole file. A changed file (new mtime/size) discards its recorded steps and reprocesses from scratch.
 - **Stored transcript text** (`state.store_text: true`, default): the index keeps each file's raw ASR transcript and post-processed text, keyed to its mtime/size. With EPIC-047 this is the *only* place the raw transcript lives — the on-disk result holds the post-processed (or raw) transcript body, never both. Resume and `--refresh` read the transcript back from here.
-- **`--refresh`**: a single pass that re-runs every step downstream of ASR (postprocess → summary → dir concat/summary → compose → format) from the stored transcript with the current config and **no whisper call** — the fast path for iterating on prompts, models, `formatter`, or `result`. Honors `skip_marker` / `max_age_days` / `max_files_per_run` / `processing_mode`; a file with no stored text is skipped (no `_err.txt`); a changed source file is skipped (its stored text is stale). Needs `state.enabled` + `state.store_text`. Changing `transcription` settings still requires `rescan: true`.
-- **Multiple ASR engines** (`transcription.engines`, EPIC-048): a list of engine configs, each merged onto the top-level `transcription` block (entry values win). Every engine transcribes every file and produces its **own** result files — `<file>_<name>.<ext>` and `_<dirname>_<name>.<ext>` — and its own rows in the processing index (raw/fixed text keyed by engine in the `asr_results` table, `step:<name>` tokens). One engine failing writes `<file>_<name>_err.txt` and does not block the others; the file is recorded `done` only once every engine finished. `--refresh` regenerates each engine from its stored text; an engine with no stored text for a file is skipped. With no `engines:` list there is one implicit engine (`name: ""`) and output names are unchanged. `max_files_per_run` counts **files**, not file×engine. Engine `name` must match `[A-Za-z0-9._-]+` and be unique.
+- **`--refresh`**: a single pass that re-runs every step downstream of ASR (postprocess → summary → dir concat/summary → compose → format) from the stored transcript with the current config and **no whisper call** — the fast path for iterating on prompts, models, `formatter`, or `result`. Honors `skip_marker` / `max_age_days` / `max_files_per_run` / `processing_mode`; a file with no stored text is skipped (no error recorded); a changed source file is skipped (its stored text is stale). Needs `state.enabled` + `state.store_text`. Changing `transcription` settings still requires `rescan: true`.
+- **Multiple ASR engines** (`transcription.engines`, EPIC-048): a list of engine configs, each merged onto the top-level `transcription` block (entry values win). Every engine transcribes every file and produces its **own** result files — `<file>_<name>.<ext>` and `_<dirname>_<name>.<ext>` — and its own rows in the processing index (raw/fixed text keyed by engine in the `asr_results` table, `step:<name>` tokens). One engine failing records an `errors` row for that engine (not a sidecar) and does not block the others; the file is recorded `done` only once every engine finished. `--refresh` regenerates each engine from its stored text; an engine with no stored text for a file is skipped. With no `engines:` list there is one implicit engine (`name: ""`) and output names are unchanged. `max_files_per_run` counts **files**, not file×engine. Engine `name` must match `[A-Za-z0-9._-]+` and be unique.
 - **Diarization JSON** (`logging.diarize_log: true`): raw service JSON is written under `<log_dir>/diarize/<path-relative-to-watch_dir>.json` (a debug artifact, not beside the audio and not a pipeline input). With named engines it goes under `<log_dir>/diarize/<engine>/`.
 - **Processing mode** (`processing_mode`, default `per_file`): `per_file` runs every step on one file before moving to the next; `per_step` runs each step across all pending files before the next step starts (reduces Ollama model-swap overhead when postprocessing/file_summarization use different models). Both produce identical output — only step ordering differs.
 

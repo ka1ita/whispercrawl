@@ -23,6 +23,13 @@ from whispercrawl.pipeline.postprocessor import PostProcessingError
 from whispercrawl.pipeline.transcriber import TranscriptionError
 
 
+def _has_error(tmp_path: Path, rel: str) -> bool:
+    from whispercrawl.state import ProcessingState
+
+    with ProcessingState.open(tmp_path / "db" / "state.db") as st:
+        return bool(st.get_errors(rel))
+
+
 def _config(
     tmp_path: Path,
     *,
@@ -142,7 +149,8 @@ class TestPerStepFailureIsolation:
         assert ("summarize", "a.mp3") in calls
         assert ("postprocess", "b.mp3") not in calls
         assert ("summarize", "b.mp3") not in calls
-        assert (tmp_path / "b_err.txt").exists()
+        assert _has_error(tmp_path, "b.mp3")
+        assert not (tmp_path / "b_err.txt").exists()
         assert (tmp_path / "a.txt").exists()
 
     def test_postprocess_failure_does_not_prevent_summarization(self, tmp_path: Path):
@@ -160,7 +168,8 @@ class TestPerStepFailureIsolation:
             run_pipeline(_config(tmp_path, processing_mode="per_step"))
 
         assert ("summarize", "a.mp3") in calls
-        assert (tmp_path / "a_err.txt").exists()
+        assert _has_error(tmp_path, "a.mp3")
+        assert not (tmp_path / "a_err.txt").exists()
         # a failed step → no consolidated result and no legacy sidecars
         assert not (tmp_path / "a.txt").exists()
         assert not (tmp_path / "a_sum.txt").exists()

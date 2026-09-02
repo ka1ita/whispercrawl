@@ -33,6 +33,8 @@ processing_mode: per_file
 # The index also stores each file's raw ASR transcript and post-processed text; this powers
 #   whispercrawl --refresh  — re-run post-processing, summarization, and formatting from the
 #   stored transcript with the current config and no whisper call (needs enabled: true + store_text: true).
+# Failures are recorded here too (no _err.txt beside the audio unless enabled: false):
+#   whispercrawl --errors   — list what failed and why; exits non-zero if anything is outstanding.
 state:
   enabled: true
   # store_text: true                       # keep raw + fixed transcript text in the index (enables --refresh)
@@ -65,7 +67,7 @@ transcription:
   language: ru                    # Default language: auto, ru, en, etc.
   diarize: true                   # Requires HF_TOKEN set in .env
   output_suffix: ""
-  error_suffix: _err
+  error_suffix: _err                # only when state.enabled: false; else see: whispercrawl --errors
   timeout: 3600
   # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
   # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
@@ -116,7 +118,7 @@ postprocessing:
     - '.*Аминь.\n'
     - '.*Аллилуйя.\n'
     - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
-  error_suffix: _err
+  error_suffix: _err                # only when state.enabled: false; else see: whispercrawl --errors
   timeout: 600
   # output_suffix / replace_transcription: deprecated no-ops since EPIC-047
   filename_timestamp_format:
@@ -136,7 +138,7 @@ file_summarization:
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  error_suffix: _err
+  error_suffix: _err                # only when state.enabled: false; else see: whispercrawl --errors
   timeout: 300
   # output_suffix: deprecated no-op since EPIC-047
 
@@ -151,7 +153,7 @@ dir_summarization:
     Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  error_suffix: _err
+  error_suffix: _err                # only when state.enabled: false; else see: whispercrawl --errors
   timeout: 300
   # concat_suffix / output_suffix: deprecated no-ops since EPIC-047
 

@@ -41,6 +41,11 @@ def _config(tmp_path: Path, engine_names, *, fmt="txt", mode="per_file",
     )
 
 
+def _errors(tmp_path: Path, rel: str | None = None):
+    with ProcessingState.open(tmp_path / "db" / "state.db") as idx:
+        return idx.get_errors(rel)
+
+
 def _by_engine(self, path: Path) -> str:
     return f"{self.config.name or 'def'}::{path.name}"
 
@@ -88,8 +93,10 @@ class TestEngineFailureIsolation:
             run_pipeline(_config(tmp_path, ["a", "b"], rescan=False))
 
         assert (tmp_path / "rec_a.txt").exists()
-        assert (tmp_path / "rec_b_err.txt").exists()
+        assert not (tmp_path / "rec_b_err.txt").exists()  # no sidecar (EPIC-049)
         assert not (tmp_path / "rec_b.txt").exists()
+        errs = _errors(tmp_path, "rec.mp3")
+        assert [(e.engine, e.step) for e in errs] == [("b", "transcribe")]
         with ProcessingState.open(tmp_path / "db" / "state.db") as idx:
             assert idx.lookup("rec.mp3").status == "error"
 
@@ -110,7 +117,7 @@ class TestEngineFailureIsolation:
 
         assert calls == ["b"]  # engine a resumed from the index
         assert (tmp_path / "rec_b.txt").exists()
-        assert not (tmp_path / "rec_b_err.txt").exists()  # cleared on success
+        assert _errors(tmp_path, "rec.mp3") == []  # cleared on success
         with ProcessingState.open(tmp_path / "db" / "state.db") as idx:
             assert idx.lookup("rec.mp3").status == "done"
 
@@ -137,7 +144,6 @@ class TestRefreshPerEngine:
         with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
                    lambda self, p: "a text" if self.config.name == "a" else (_ for _ in ()).throw(TranscriptionError("x"))):
             run_pipeline(_config(tmp_path, ["a", "b"], rescan=False))
-        (tmp_path / "rec_b_err.txt").unlink(missing_ok=True)
 
         with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
                    lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe"))):

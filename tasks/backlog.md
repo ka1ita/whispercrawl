@@ -4,6 +4,26 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-049: Record Pipeline Errors in the Index, Not in `_err.txt` Sidecars
+
+_Depends on EPIC-040 (index), EPIC-046/047/048 (index text + per-engine keys). Landed 2026-09-02._
+
+- [x] `state.py`: `SCHEMA_VERSION` → `"5"`; `errors(path, engine, scope, step, message, mtime, size, updated_at)` table in `_SCHEMA` (create-only migration) (EPIC-049, 2026-09-02)
+- [x] `state.py`: `ErrorRecord` dataclass; `record_error` / `clear_errors(engine=None)` / `get_errors(rel_path=None)` on `ProcessingState`; `mark_step` mtime/size reset also `DELETE FROM errors`; `forget` / `clear` clear it; `NullState` no-ops + `[]` (EPIC-049, 2026-09-02)
+- [x] `main.py`: `_report_error(...)` helper — index row when `ProcessingState`, else `_err.txt` fallback; replace all four `_write_error(...)` call sites (EPIC-049, 2026-09-02)
+- [x] `main.py`: clear errors on success — per-engine in `_finalize_one`, per-engine per-dir in the directory loop; the stale-`_err.txt` `unlink()` blocks now run only under the disabled-index fallback (EPIC-049, 2026-09-02)
+- [x] `main.py`: per-directory `SummarizationError` → `record_error(dir_rel, "dir_summarize", …, scope="dir")`; no `_<dirname>_err.txt` write (EPIC-049, 2026-09-02)
+- [x] `main.py`: end-of-run WARNING when `state.get_errors()` non-empty, pointing at `--errors` (EPIC-049, 2026-09-02)
+- [x] `main.py`: `run_errors` + `--errors` argparse flag + branch (`--cleanup` → `--errors` → `--refresh` → `--once`/`--dry-run` → scheduler); grouped listing (UTF-8-safe print), non-zero exit when any error rows, note + exit zero when `state.enabled: false` or no index (EPIC-049, 2026-09-02)
+- [x] `run_cleanup`: `*<error_suffix>.txt` sweep kept as legacy-only (comment); `state.clear()` empties `errors` (EPIC-049, 2026-09-02)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: `error_suffix` comment (only when `state.enabled: false`); `state:` block notes `--errors` (EPIC-049, 2026-09-02)
+- [x] Docs — `CLAUDE.md` (pipeline + Key Conventions), `docs/architecture/overview.md` (Error Handling Strategy + `state.py` + CLI flags), `ADR-005-errors-in-index.md`, `deploy/*/DEPLOY.md` (check-for-failures + upgrade note) (EPIC-049, 2026-09-02)
+- [x] Tests — `tests/test_state.py` `TestErrorRecording`: v4→v5 create; `record_error`/`get_errors` round-trip (file + dir); upsert; `clear_errors` all vs one engine + scope-specific; `mark_step` reset drops rows; `forget`/`clear`; `NullState` (EPIC-049, 2026-09-02)
+- [x] Tests — `tests/test_pipeline_err_cleanup.py` rewritten: each step failure → no `_err.txt`, one `errors` row, `status='error'`; dir failure → `scope='dir'` row; fix + rerun clears it; `state.enabled: false` → `_err.txt` fallback. `test_multi_engine` / `test_processing_index` / `test_processing_mode` / `test_postprocessor` updated for index rows (EPIC-049, 2026-09-02)
+- [x] Tests — `tests/test_cleanup_cli.py`: `--cleanup` removes a legacy `*_err.txt` and empties `errors`; new `tests/test_errors_cli.py` for `--errors` (listing + exit codes + disabled/no-index note + multiline message) (EPIC-049, 2026-09-02)
+
+---
+
 ## EPIC-048: Multiple ASR Engines — Parallel Transcription, Per-Engine Results
 
 _Depends on EPIC-046 (landed) and EPIC-047 (landed)._

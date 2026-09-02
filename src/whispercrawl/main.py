@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 from whispercrawl.config import Config, engine_label, load_config
@@ -49,6 +50,53 @@ def render_output(text: str, fmt: str) -> str:
 def _write_error(file_path: Path, error_suffix: str, message: str) -> None:
     err_path = output_path(file_path, error_suffix, "txt")
     err_path.write_text(message, encoding="utf-8")
+
+
+def run_errors(config: Config) -> int:
+    """Print failures recorded in the processing index. Returns a process exit
+    code: non-zero when at least one error is outstanding, zero otherwise."""
+    from whispercrawl.state import ProcessingState, default_state_path
+
+    if not config.state.enabled:
+        logger.info(
+            "Processing index disabled (state.enabled: false); failures are written "
+            "to *%s.txt sidecars beside the audio.",
+            config.transcription.error_suffix,
+        )
+        return 0
+
+    state_path = config.state.path or default_state_path(config.watch_dir)
+    if not Path(state_path).exists():
+        logger.info("No processing index at %s — nothing recorded yet.", state_path)
+        return 0
+
+    with ProcessingState.open(state_path) as state:
+        errors = state.get_errors()
+
+    if not errors:
+        logger.info("No outstanding errors in the processing index.")
+        return 0
+
+    from itertools import groupby
+
+    lines: list[str] = []
+    for path, group in groupby(errors, key=lambda e: e.path):
+        rows = list(group)
+        is_dir = any(r.scope == "dir" for r in rows)
+        lines.append(f"{path}{'  (directory)' if is_dir else ''}")
+        for r in rows:
+            tag = f"[{r.engine}] " if r.engine else ""
+            first_line = next((ln for ln in r.message.strip().splitlines() if ln.strip()), r.message)
+            lines.append(f"    {tag}{r.step:<14} {first_line}")
+
+    text = "\n".join(lines)
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # redirected stdout on Windows falls back to the locale codec — write
+        # the bytes directly so Cyrillic paths survive a pipe / cron capture.
+        sys.stdout.buffer.write((text + "\n").encode("utf-8"))
+    return 1
 
 
 def run_cleanup(config: Config, dry_run: bool = False) -> None:
@@ -102,7 +150,9 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
                     logger.info("Cleaned: %s", dir_sum)
                 removed += 1
 
-    # Remove all error files unconditionally (always written as .txt)
+    # Sweep leftover error sidecars (always .txt). Since EPIC-049 failures are
+    # recorded in the index, not on disk — these are pre-049 / disabled-index
+    # leftovers. state.clear() below drops the index `errors` table too.
     err_suffixes = {
         config.transcription.error_suffix,
         config.postprocessing.error_suffix,
@@ -174,7 +224,37 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
     from whispercrawl.pipeline.postprocessor import PostProcessor, PostProcessingError
     from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
     from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
+    from whispercrawl.state import ProcessingState
     from whispercrawl.utils.service_logger import ServiceLogger
+
+    # Failures go to the processing index (an ``errors`` row + status='error').
+    # Only when the index is disabled do we fall back to a ``<file>_err.txt``
+    # sidecar so an error is never silently lost.
+    _index_errors = isinstance(state, ProcessingState)
+
+    def _rel_dir(p: Path) -> str:
+        try:
+            return str(p.relative_to(config.watch_dir))
+        except ValueError:
+            return str(p)
+
+    def _report_error(
+        rel: str,
+        step: str,
+        engine: str,
+        message: str,
+        *,
+        err_path: Path,
+        scope: str = "file",
+        mtime: "float | None" = None,
+        size: "int | None" = None,
+    ) -> None:
+        if _index_errors:
+            state.record_error(
+                rel, step, message, engine=engine, scope=scope, mtime=mtime, size=size
+            )
+        else:
+            err_path.write_text(message, encoding="utf-8")
 
     engines = config.transcription.engines
     files = list(iter_media_files(
@@ -307,7 +387,12 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     transcript = transcribers[name].transcribe(file_path)
                 except TranscriptionError as e:
                     logger.error("Transcription failed for %s: %s", tag, e)
-                    _write_error(file_path, elabel + eng.error_suffix, str(e))
+                    _report_error(
+                        rel, "transcribe", name, str(e),
+                        err_path=output_path(file_path, elabel + eng.error_suffix, "txt"),
+                        mtime=fst.st_mtime if fst is not None else None,
+                        size=fst.st_size if fst is not None else None,
+                    )
                     file_engine_ok[file_path][name] = False
                     return None
                 except (KeyboardInterrupt, SystemExit):
@@ -354,7 +439,14 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 fixed_text = postprocessor.process(transcript, source_path=file_path)
             except PostProcessingError as e:
                 logger.error("Post-processing failed for %s: %s", file_path, e)
-                _write_error(file_path, ctx["elabel"] + config.postprocessing.error_suffix, str(e))
+                _report_error(
+                    rel, "postprocess", eng, str(e),
+                    err_path=output_path(
+                        file_path, ctx["elabel"] + config.postprocessing.error_suffix, "txt"
+                    ),
+                    mtime=fst.st_mtime if fst is not None else None,
+                    size=fst.st_size if fst is not None else None,
+                )
                 ctx["success"] = False
                 return
 
@@ -381,7 +473,14 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 summary = file_summarizer.summarize_file(summary_input, file=file_path.name)
             except SummarizationError as e:
                 logger.error("File summarization failed for %s: %s", file_path, e)
-                _write_error(file_path, ctx["elabel"] + config.file_summarization.error_suffix, str(e))
+                _report_error(
+                    rel, "file_summarize", eng, str(e),
+                    err_path=output_path(
+                        file_path, ctx["elabel"] + config.file_summarization.error_suffix, "txt"
+                    ),
+                    mtime=fst.st_mtime if fst is not None else None,
+                    size=fst.st_size if fst is not None else None,
+                )
                 ctx["success"] = False
                 return
 
@@ -410,6 +509,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 if refresh and fst is not None:
                     for _s in ("transcribe", "postprocess", "file_summarize"):
                         state.mark_step(rel, _s, fst.st_mtime, fst.st_size, eng)
+                state.clear_errors(rel, engine=eng, scope="file")
             file_engine_ok[file_path][eng] = success
 
         def _finalize_file(file_path: Path) -> None:
@@ -422,7 +522,8 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             all_ok = all(results.values())
             if cleanup:
                 cleaner.clean(file_path, all_ok)
-            if all_ok:
+            if all_ok and not _index_errors:
+                # disabled-index fallback: sweep the stale _err.txt sidecars
                 for eng in engines:
                     err_path = output_path(
                         file_path, engine_label(eng.name) + config.transcription.error_suffix, "txt"
@@ -459,6 +560,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
 
         prefix = "_" if config.dir_summarization.underscore_prefix else ""
         for dir_path in sorted(dir_file_texts):
+            dir_rel = _rel_dir(dir_path)
             for eng_name in sorted(dir_file_texts[dir_path]):
                 elabel = engine_label(eng_name)
                 dir_base = dir_path / (prefix + dir_path.name + elabel)
@@ -490,13 +592,29 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     all_outputs_to_format.append(dir_result_path)
                     logger.info("Directory result written: %s", dir_result_path)
 
-                    if dir_err_path.exists():
+                    if _index_errors:
+                        state.clear_errors(dir_rel, engine=eng_name, scope="dir")
+                    elif dir_err_path.exists():
                         dir_err_path.unlink()
                         logger.debug("Removed stale error file: %s", dir_err_path)
                 except SummarizationError as e:
                     logger.error("Directory summarization failed for %s: %s", dir_path, e)
-                    dir_err_path.write_text(str(e), encoding="utf-8")
+                    _report_error(
+                        dir_rel, "dir_summarize", eng_name, str(e),
+                        err_path=dir_err_path, scope="dir",
+                    )
         dir_file_texts.clear()
+
+        if _index_errors:
+            outstanding = state.get_errors()
+            if outstanding:
+                n_files = len({e.path for e in outstanding if e.scope == "file"})
+                n_dirs = sum(1 for e in outstanding if e.scope == "dir")
+                logger.warning(
+                    "%d file(s) and %d directory step(s) finished with errors; "
+                    "run 'whispercrawl --errors' for details",
+                    n_files, n_dirs,
+                )
 
         for path in all_outputs_to_format:
             if path.exists():
@@ -509,6 +627,12 @@ def main() -> None:
     parser.add_argument("--once", action="store_true", help="Run once and exit")
     parser.add_argument("--dry-run", action="store_true", help="Log files that would be processed without processing them")
     parser.add_argument("--cleanup", action="store_true", help="Delete output files under watch_dir without running the pipeline")
+    parser.add_argument(
+        "--errors",
+        action="store_true",
+        help="List pipeline failures recorded in the processing index and exit "
+        "non-zero if any are outstanding.",
+    )
     parser.add_argument(
         "--refresh",
         action="store_true",
@@ -523,6 +647,9 @@ def main() -> None:
     if args.cleanup and not args.once:
         run_cleanup(config, dry_run=args.dry_run)
         return
+
+    if args.errors:
+        raise SystemExit(run_errors(config))
 
     if args.refresh:
         run_pipeline(config, refresh=True, cleanup=args.cleanup)

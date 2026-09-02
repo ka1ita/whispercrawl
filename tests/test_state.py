@@ -294,6 +294,102 @@ class TestPerEngineText:
             assert st.is_current("old.mp3", 1.0, 10) is True
 
 
+class TestErrorRecording:
+    """EPIC-049: pipeline failures live in the index, not in _err.txt sidecars."""
+
+    def test_record_then_get_roundtrip(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("a.mp3", "transcribe", "HTTP 500", engine="wx", mtime=1.0, size=10)
+            rows = st.get_errors("a.mp3")
+        assert len(rows) == 1
+        r = rows[0]
+        assert (r.path, r.engine, r.scope, r.step, r.message) == (
+            "a.mp3", "wx", "file", "transcribe", "HTTP 500",
+        )
+        assert r.mtime == 1.0 and r.size == 10
+
+    def test_dir_scoped_row(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("sub", "dir_summarize", "ollama down", scope="dir")
+            rows = st.get_errors("sub")
+        assert rows[0].scope == "dir"
+        assert rows[0].mtime is None and rows[0].size is None
+
+    def test_record_upserts_on_same_key(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("a.mp3", "transcribe", "first", engine="wx")
+            st.record_error("a.mp3", "transcribe", "second", engine="wx")
+            rows = st.get_errors("a.mp3")
+        assert [r.message for r in rows] == ["second"]
+
+    def test_get_errors_all_grouped_by_path(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("b.mp3", "transcribe", "x")
+            st.record_error("a.mp3", "postprocess", "y")
+            paths = [r.path for r in st.get_errors()]
+        assert paths == ["a.mp3", "b.mp3"]
+
+    def test_clear_errors_one_engine_vs_all(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("a.mp3", "transcribe", "x", engine="wx")
+            st.record_error("a.mp3", "transcribe", "y", engine="fw")
+            st.clear_errors("a.mp3", engine="wx")
+            assert [r.engine for r in st.get_errors("a.mp3")] == ["fw"]
+            st.clear_errors("a.mp3")
+            assert st.get_errors("a.mp3") == []
+
+    def test_clear_errors_is_scope_specific(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("x", "file_summarize", "f", scope="file")
+            st.record_error("x", "dir_summarize", "d", scope="dir")
+            st.clear_errors("x", scope="file")
+            assert [r.scope for r in st.get_errors("x")] == ["dir"]
+
+    def test_mark_step_reset_drops_error_rows(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.mark_step("a.mp3", "transcribe", 1.0, 10)
+            st.record_error("a.mp3", "postprocess", "boom", mtime=1.0, size=10)
+            st.mark_step("a.mp3", "transcribe", 2.0, 10)  # file changed
+            assert st.get_errors("a.mp3") == []
+
+    def test_forget_and_clear_drop_error_rows(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.record_error("a.mp3", "transcribe", "x")
+            st.record_error("b.mp3", "transcribe", "y")
+            st.forget("a.mp3")
+            assert st.get_errors("a.mp3") == []
+            st.clear()
+            assert st.get_errors() == []
+
+    def test_v4_db_gains_errors_table(self, tmp_path: Path):
+        db = tmp_path / "s.db"
+        conn = sqlite3.connect(db)
+        conn.executescript(
+            "CREATE TABLE files (path TEXT PRIMARY KEY, mtime REAL NOT NULL, size INTEGER NOT NULL,"
+            " status TEXT NOT NULL, updated_at REAL NOT NULL, detail TEXT NOT NULL DEFAULT '',"
+            " steps TEXT NOT NULL DEFAULT '');"
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);"
+            "CREATE TABLE asr_results (path TEXT NOT NULL, engine TEXT NOT NULL, kind TEXT NOT NULL,"
+            " text TEXT, mtime REAL, size INTEGER, PRIMARY KEY (path, engine, kind));"
+        )
+        conn.execute("INSERT INTO files(path,mtime,size,status,updated_at) VALUES ('a.mp3',1.0,10,'done',0)")
+        conn.execute("INSERT INTO meta(key,value) VALUES ('schema_version','4')")
+        conn.commit()
+        conn.close()
+
+        with ProcessingState.open(db) as st:
+            assert st.lookup("a.mp3").status == "done"  # existing row preserved
+            st.record_error("a.mp3", "transcribe", "x")
+            assert [r.step for r in st.get_errors("a.mp3")] == ["transcribe"]
+
+    def test_nullstate_error_methods(self):
+        ns = NullState()
+        ns.record_error("x", "transcribe", "m")  # no-op, no error
+        ns.clear_errors("x")
+        assert ns.get_errors() == []
+        assert ns.get_errors("x") == []
+
+
 class TestNullState:
     def test_is_current_always_false(self):
         ns = NullState()

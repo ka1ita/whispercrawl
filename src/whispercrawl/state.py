@@ -19,7 +19,7 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 STATE_DIRNAME = "db"
 LEGACY_STATE_DIRNAME = ".whispercrawl"  # pre-EPIC-043 location, under watch_dir
 STATE_FILENAME = "state.db"
@@ -54,6 +54,21 @@ CREATE TABLE IF NOT EXISTS asr_results (
     size   INTEGER,
     PRIMARY KEY (path, engine, kind)
 );
+-- Pipeline failures per file / directory per engine per step (EPIC-049).
+-- Replaces the ``<file>_err.txt`` sidecar; read back with ``whispercrawl
+-- --errors``. ``scope='dir'`` rows key ``path`` to a directory (relative to
+-- watch_dir) and leave ``mtime`` / ``size`` NULL.
+CREATE TABLE IF NOT EXISTS errors (
+    path       TEXT NOT NULL,
+    engine     TEXT NOT NULL,        -- '' = single implicit engine
+    scope      TEXT NOT NULL,        -- 'file' | 'dir'
+    step       TEXT NOT NULL,        -- transcribe | postprocess | file_summarize | dir_summarize
+    message    TEXT NOT NULL,
+    mtime      REAL,
+    size       INTEGER,
+    updated_at REAL NOT NULL,
+    PRIMARY KEY (path, engine, scope, step)
+);
 """
 
 
@@ -66,6 +81,18 @@ class Record:
     updated_at: float
     detail: str
     steps: str = ""
+
+
+@dataclass(frozen=True)
+class ErrorRecord:
+    path: str
+    engine: str
+    scope: str  # "file" | "dir"
+    step: str
+    message: str
+    mtime: Optional[float]
+    size: Optional[int]
+    updated_at: float
 
 
 class ProcessingState:
@@ -144,6 +171,7 @@ class ProcessingState:
                 (mtime, size, time.time(), joined, rel_path),
             )
             self._conn.execute("DELETE FROM asr_results WHERE path=?", (rel_path,))
+            self._conn.execute("DELETE FROM errors WHERE path=?", (rel_path,))
         else:
             self._conn.execute(
                 "INSERT INTO files(path, mtime, size, status, updated_at, detail, steps) "
@@ -188,6 +216,64 @@ class ProcessingState:
             return None
         return row[0]
 
+    def record_error(
+        self,
+        rel_path: str,
+        step: str,
+        message: str,
+        *,
+        engine: str = "",
+        scope: str = "file",
+        mtime: Optional[float] = None,
+        size: Optional[int] = None,
+    ) -> None:
+        """Record one failing pipeline step for a file / directory and engine.
+
+        Replaces the ``<file>_err.txt`` sidecar. Upserts on
+        ``(path, engine, scope, step)`` so a retry overwrites the old message.
+        """
+        self._conn.execute(
+            "INSERT INTO errors(path, engine, scope, step, message, mtime, size, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(path, engine, scope, step) DO UPDATE SET "
+            "message=excluded.message, mtime=excluded.mtime, size=excluded.size, "
+            "updated_at=excluded.updated_at",
+            (rel_path, engine, scope, step, message, mtime, size, time.time()),
+        )
+        self._conn.commit()
+
+    def clear_errors(
+        self, rel_path: str, *, engine: Optional[str] = None, scope: str = "file"
+    ) -> None:
+        """Drop recorded errors for a path — one engine (``engine=<name>``) or all
+        engines (``engine=None``). Called when that step / file / directory
+        succeeds."""
+        if engine is None:
+            self._conn.execute(
+                "DELETE FROM errors WHERE path=? AND scope=?", (rel_path, scope)
+            )
+        else:
+            self._conn.execute(
+                "DELETE FROM errors WHERE path=? AND scope=? AND engine=?",
+                (rel_path, scope, engine),
+            )
+        self._conn.commit()
+
+    def get_errors(self, rel_path: Optional[str] = None) -> list[ErrorRecord]:
+        """All outstanding errors (or those for one path), grouped by path."""
+        if rel_path is None:
+            rows = self._conn.execute(
+                "SELECT path, engine, scope, step, message, mtime, size, updated_at "
+                "FROM errors ORDER BY path, scope, engine, step"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT path, engine, scope, step, message, mtime, size, updated_at "
+                "FROM errors WHERE path=? ORDER BY scope, engine, step",
+                (rel_path,),
+            ).fetchall()
+        return [ErrorRecord(*r) for r in rows]
+
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         """True when a ``done`` record exists for an unchanged file (mtime + size)."""
         rec = self.lookup(rel_path)
@@ -212,11 +298,13 @@ class ProcessingState:
     def forget(self, rel_path: str) -> None:
         self._conn.execute("DELETE FROM files WHERE path = ?", (rel_path,))
         self._conn.execute("DELETE FROM asr_results WHERE path = ?", (rel_path,))
+        self._conn.execute("DELETE FROM errors WHERE path = ?", (rel_path,))
         self._conn.commit()
 
     def clear(self) -> None:
         self._conn.execute("DELETE FROM files")
         self._conn.execute("DELETE FROM asr_results")
+        self._conn.execute("DELETE FROM errors")
         self._conn.commit()
 
     def close(self) -> None:
@@ -253,6 +341,27 @@ class NullState:
         self, rel_path: str, kind: str, mtime: float, size: int, engine: str = ""
     ) -> Optional[str]:
         return None
+
+    def record_error(
+        self,
+        rel_path: str,
+        step: str,
+        message: str,
+        *,
+        engine: str = "",
+        scope: str = "file",
+        mtime: Optional[float] = None,
+        size: Optional[int] = None,
+    ) -> None:
+        pass
+
+    def clear_errors(
+        self, rel_path: str, *, engine: Optional[str] = None, scope: str = "file"
+    ) -> None:
+        pass
+
+    def get_errors(self, rel_path: Optional[str] = None) -> list[ErrorRecord]:
+        return []
 
     def mark(self, rel_path: str, status: str, mtime: float, size: int, detail: str = "") -> None:
         pass
