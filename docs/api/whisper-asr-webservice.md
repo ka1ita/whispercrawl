@@ -39,5 +39,5 @@ service — run one `whisper-asr-webservice` per engine.
 
 ```yaml
 # See deploy/dev/docker-compose.dev.yml
-image: onerahmet/openai-whisper-asr-webservice:latest
+image: ${ASR_IMAGE:-asr-webservice:latest}   # mirrored from onerahmet/openai-whisper-asr-webservice:latest
 ```

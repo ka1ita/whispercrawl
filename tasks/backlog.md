@@ -4,6 +4,20 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-050: Pull the ASR Service Image from the Internal Registry (`asr-webservice:latest`)
+
+_Deployment artifacts only — no `src/` or test changes. Landed 2026-09-02._
+
+- [x] All three compose files (`deploy/dev/docker-compose.services.yml`, `deploy/dev/docker-compose.dev.yml`, `deploy/prod-local/docker-compose.prod-local.yml`): `whisper` service `image: ${ASR_IMAGE:-asr-webservice:latest}` (EPIC-050, 2026-09-02)
+- [x] `deploy/dev/build-prod.sh`: `ASR_SRC_IMAGE` (pulled, default `onerahmet/openai-whisper-asr-webservice:latest`) + `ASR_IMAGE` (`asr-webservice:latest`); `docker tag` after pull; `docker save $ASR_IMAGE` → `whisper.tar`; `LOCAL_IMAGES` + echo text updated (EPIC-050, 2026-09-02)
+- [x] `deploy/dev/.env.example`, `deploy/prod-local/.env.example`: commented `ASR_IMAGE=` entry (default + registry-override note); `deploy/prod/.env.example` untouched (EPIC-050, 2026-09-02)
+- [x] `deploy/prod-local/setup.sh`: comment that `whisper.tar` loads as `asr-webservice:latest` and `ASR_IMAGE` registry path makes the load optional (EPIC-050, 2026-09-02)
+- [x] Docs — `deploy/prod-local/DEPLOY.md` (image table + `ASR_IMAGE` note), `docs/api/whisper-asr-webservice.md` (snippet + "mirrored from" comment), `CLAUDE.md` (Target Environments note); `docs/architecture/overview.md` already labels the box `asr-webservice` — no `onerahmet` ref (EPIC-050, 2026-09-02)
+- [x] `epics/EPIC-021-prod-local-all-in-one.md`: one-line italic note that the image was renamed in EPIC-050 (body left as historical record) (EPIC-050, 2026-09-02)
+- [x] Verified: `grep -rn onerahmet` returns only README attribution + `ASR_SRC_IMAGE` default + "mirrored from" comments + EPIC-021 body; `docker compose config` resolves `asr-webservice:latest` (and the `ASR_IMAGE` override); `bash -n` clean on both scripts (EPIC-050, 2026-09-02)
+
+---
+
 ## EPIC-049: Record Pipeline Errors in the Index, Not in `_err.txt` Sidecars
 
 _Depends on EPIC-040 (index), EPIC-046/047/048 (index text + per-engine keys). Landed 2026-09-02._

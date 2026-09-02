@@ -19,8 +19,12 @@ This builds `whispercrawl:latest`, then pulls and exports all three images into 
 | File | Image |
 |---|---|
 | `whispercrawl.tar` | whispercrawl:latest |
-| `whisper.tar` | onerahmet/openai-whisper-asr-webservice:latest |
+| `whisper.tar` | asr-webservice:latest (mirrored from onerahmet/openai-whisper-asr-webservice:latest) |
 | `ollama.tar` | ollama/ollama:latest |
+
+If the target host can reach an internal Docker registry, set `ASR_IMAGE` in
+`.env` to the mirrored path (e.g. `registry.example/asr-webservice:latest`) and
+the `whisper` service will pull it instead of loading `whisper.tar`.
 
 ---
 

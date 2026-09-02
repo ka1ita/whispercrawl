@@ -2,6 +2,8 @@
 
 **Status**: Done
 
+_The ASR image `onerahmet/openai-whisper-asr-webservice:latest` referenced below was renamed to `asr-webservice:latest` in EPIC-050; the body is kept as the original record._
+
 ## Goal
 
 Add a `deploy/prod-local/` bundle that runs **all services** (whisper-asr-webservice, ollama, and whispercrawl) on a single server using Docker Compose — targeting air-gapped Linux hosts that have no internet access.

@@ -12,7 +12,7 @@ version: "3.9"
 services:
 
   whisper:
-    image: onerahmet/openai-whisper-asr-webservice:latest
+    image: ${ASR_IMAGE:-asr-webservice:latest}   # loaded from dist/whisper.tar by setup.sh; set ASR_IMAGE to a registry path to pull instead
     environment:
       ASR_MODEL: ${ASR_MODEL:-small}    # tiny | base | small | medium | large
       ASR_ENGINE: whisperx

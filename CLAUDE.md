@@ -127,3 +127,8 @@ Edit [config.yaml](config.yaml) directly — it is the working example. Key sect
 
 - **Dev/Test**: Windows 11 with Docker + Ollama
 - **Production**: RedOS 8 (Linux) with external whisper-asr-webservice and Ollama
+
+The ASR service image is referenced as `asr-webservice:latest` (mirrored from the
+upstream `onerahmet/openai-whisper-asr-webservice:latest`). Every compose file
+resolves it via `${ASR_IMAGE:-asr-webservice:latest}` — set `ASR_IMAGE` in the
+env file to pull from an internal registry instead of loading `whisper.tar`.

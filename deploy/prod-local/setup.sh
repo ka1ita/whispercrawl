@@ -34,6 +34,9 @@ chmod 750 audio logs db
 
 echo "==> Loading Docker images from dist/ ..."
 
+# whisper.tar loads as asr-webservice:latest (the compose default). If ASR_IMAGE
+# in .env points at a reachable internal registry, this step is optional — the
+# whisper service will pull it instead.
 for TAR in whispercrawl.tar whisper.tar ollama.tar; do
   if [[ ! -f "dist/$TAR" ]]; then
     echo "ERROR: dist/$TAR not found." >&2

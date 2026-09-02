@@ -25,10 +25,15 @@ echo "==> Building whispercrawl:latest ..."
 docker build -t whispercrawl:latest "$REPO_ROOT"
 
 # ── 2. Pull dependency images if not already present ─────────────────────────
-WHISPER_IMAGE="onerahmet/openai-whisper-asr-webservice:latest"
+# ASR_SRC_IMAGE is what the (internet-connected) build host pulls; the project
+# refers to the ASR service by the vendor-neutral ASR_IMAGE everywhere else, so
+# retag before saving/loading. A site that already mirrors the upstream image can
+# override ASR_SRC_IMAGE.
+ASR_SRC_IMAGE="${ASR_SRC_IMAGE:-onerahmet/openai-whisper-asr-webservice:latest}"
+ASR_IMAGE="${ASR_IMAGE:-asr-webservice:latest}"
 OLLAMA_IMAGE="ollama/ollama:latest"
 
-for IMAGE in "$WHISPER_IMAGE" "$OLLAMA_IMAGE"; do
+for IMAGE in "$ASR_SRC_IMAGE" "$OLLAMA_IMAGE"; do
   if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then
     echo "==> Pulling $IMAGE ..."
     docker pull "$IMAGE"
@@ -36,6 +41,9 @@ for IMAGE in "$WHISPER_IMAGE" "$OLLAMA_IMAGE"; do
     echo "==> $IMAGE already present, skipping pull."
   fi
 done
+
+echo "==> Tagging $ASR_SRC_IMAGE → $ASR_IMAGE ..."
+docker tag "$ASR_SRC_IMAGE" "$ASR_IMAGE"
 
 # ── 3. Export images ──────────────────────────────────────────────────────────
 
@@ -46,7 +54,7 @@ docker save whispercrawl:latest -o "$PROD_DIST/whispercrawl.tar"
 # deploy/prod-local — all three images (all-in-one bundle)
 declare -A LOCAL_IMAGES=(
   ["whispercrawl.tar"]="whispercrawl:latest"
-  ["whisper.tar"]="$WHISPER_IMAGE"
+  ["whisper.tar"]="$ASR_IMAGE"
   ["ollama.tar"]="$OLLAMA_IMAGE"
 )
 
