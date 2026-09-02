@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Start whisper-asr-webservice + Ollama in Docker, then run WhisperCrawl locally via Python.
-# Services are exposed on localhost so config.yaml defaults (localhost:9000 / localhost:11434) work as-is.
+# Run WhisperCrawl locally via Python against the dev two-engine config.
+# Start the ASR services first: ./deploy/dev/services-docker-start.sh
+#   (whisper :9000 and whisper2 :9001, ollama :11434 — all on localhost, so the
+#    deploy/dev/config.yaml URL defaults work as-is).
 #
 # Usage:
 #   ./deploy/dev/app-python.sh              # run on schedule (default)
@@ -12,8 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 #docker compose -f "$SCRIPT_DIR/docker-compose.services.yml" up -d
-#echo "Services started (whisper :9000, ollama :11434)."
+#echo "Services started (whisper :9000, whisper2 :9001, ollama :11434)."
 #echo ""
 
 cd "$REPO_ROOT"
-exec python -m whispercrawl --config config.yaml "$@"
+exec python -m whispercrawl --config deploy/dev/config.yaml "$@"

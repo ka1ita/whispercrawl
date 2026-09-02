@@ -44,7 +44,7 @@ An index left at the pre-EPIC-043 location (`<watch_dir>/.whispercrawl/state.db`
 
 **Recorded errors (EPIC-049).** The `errors` table holds one row per failing pipeline step — `(path, engine, scope, step)` where `scope` is `file` or `dir` — with the full exception message. This replaces the `<file>_err.txt` sidecar entirely (EPIC-051 removed the last fallback): a step failure records a row and leaves nothing beside the audio, the row is cleared when that file / directory next succeeds, and `mark_step`'s `mtime`/`size` reset drops it along with the stale `asr_results` rows. `whispercrawl --errors` prints the outstanding rows grouped by path and exits non-zero when any exist.
 
-Every run has at least one ASR engine (`config.transcription.engines`, always a non-empty list — a lone `transcription:` block becomes the single engine with `name == ""`). Multiple engines get their own `asr_results` rows and `step:<engine>` tokens; see [EPIC-048](../../epics/EPIC-048-multiple-asr-engines.md).
+Every run has at least one ASR engine (`config.transcription.engines`, always a non-empty list — a lone `transcription:` block becomes the single engine with `name == ""`). Multiple engines get their own `asr_results` rows and `step:<engine>` tokens; see [EPIC-048](../../epics/EPIC-048-multiple-asr-engines.md). The dev stack ships this configured: `deploy/dev/docker-compose.dev.yml` runs two `whisper-asr-webservice` containers — `whisper` on host port 9000 and `whisper2` on 9001 — and mounts `deploy/dev/config.yaml`, whose `engines:` list points at both ([EPIC-054](../../epics/EPIC-054-dev-second-asr-engine.md)).
 
 ### Processing mode (`processing_mode`)
 

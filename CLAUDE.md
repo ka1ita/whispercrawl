@@ -35,11 +35,16 @@ pytest tests/test_file_walker.py
 ruff check src tests
 ruff format src tests
 
-# Start dev services (whisper + ollama via Docker; gemma3:1b is pulled automatically on first start)
+# Start dev stack (two ASR engines: whisper :9000 + whisper2 :9001, ollama :11434;
+# gemma3:1b is pulled automatically on first start). The stack mounts
+# deploy/dev/config.yaml — the dev config, which pre-wires both engines (EPIC-054).
 docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d
 
 # Rebuild whispercrawl image after changing src/ or pyproject.toml
 docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d --build whispercrawl
+
+# ASR services only (for running whispercrawl locally via python); deploy/dev/app-python*.sh wrap this
+docker compose -f deploy/dev/docker-compose.services.yml --env-file deploy/dev/.env up -d
 ```
 
 ## Architecture
@@ -114,7 +119,12 @@ sidecar is ever written (EPIC-051/052).
 
 ### Config
 
-Edit [config.yaml](config.yaml) directly — it is the working example. Key sections: `transcription`, `postprocessing`, `file_summarization`, `dir_summarization`, `result`, `formatter`, `schedule`.
+Edit [config.yaml](config.yaml) directly — it is the working example (single ASR
+engine). Key sections: `transcription`, `postprocessing`, `file_summarization`,
+`dir_summarization`, `result`, `formatter`, `schedule`.
+[deploy/dev/config.yaml](deploy/dev/config.yaml) is the dev copy — same sections,
+but with `transcription.engines` pre-wired to two ASR services (`whisperx` :9000,
+`faster` :9001); the dev Docker stack and `deploy/dev/app-python*.sh` use it (EPIC-054).
 
 ## Planning Files
 

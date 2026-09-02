@@ -4,6 +4,22 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-054: Dev Stack — Second ASR Service on :9001 and a Dedicated `deploy/dev/config.yaml`
+
+_Depends on EPIC-048 (landed). Deployment artifacts + a dev config template only — no `src/` or test changes. See [epics/EPIC-054-dev-second-asr-engine.md](../epics/EPIC-054-dev-second-asr-engine.md). Landed 2026-09-02._
+
+- [x] `deploy/dev/docker-compose.dev.yml`: added `whisper2` service (`9001:9000`, `${ASR_IMAGE}`, `ASR_MODEL2`/`ASR_ENGINE2` env defaulting to `tiny`/`faster_whisper`, own `whisper2_cache`, shared `hf_cache`); `whisper` gains `ASR_MODEL`/`ASR_ENGINE` env (previous hard-codes as defaults); `whisper2_cache` volume (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/docker-compose.dev.yml` `whispercrawl` service: mounts `./config.yaml` (`deploy/dev/config.yaml`) at `/config.yaml`; `WHISPER2_URL: http://whisper2:9000`; `depends_on` gains `whisper2` (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/docker-compose.services.yml`: same `whisper2` service + `whisper2_cache` volume + `ASR_MODEL`/`ASR_ENGINE` env on `whisper`; header comment updated for 127.0.0.1:9000/9001 (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/config.yaml` (new): dev copy of root `config.yaml` with `transcription.engines` → `whisperx` (`${WHISPER_URL:http://127.0.0.1:9000}`) + `faster` (`${WHISPER2_URL:http://127.0.0.1:9001}`, `diarize: false`); shared settings on the base block; committed to git (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/app-python.sh` / `app-python-once.sh` / `app-python-cleanup.sh`: `--config deploy/dev/config.yaml`; usage comments updated (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/services-docker-start.sh` / `services-docker-restart.sh` / `services-docker-stop.sh` / `app-docker-start.sh`: echo lines mention `whisper2 :9001` (EPIC-054, 2026-09-02)
+- [x] `deploy/dev/.env.example`: commented `ASR_MODEL`/`ASR_ENGINE`/`ASR_MODEL2`/`ASR_ENGINE2` defaults with explanation (EPIC-054, 2026-09-02)
+- [x] Docs — `CLAUDE.md` (Commands + config-example note), `docs/architecture/overview.md` (dev `whisper2`), new `ADR-008-dev-second-asr-engine.md`, `README.md` (dev quickstart + directory layout + mount table), `docs/api/whisper-asr-webservice.md` (EPIC-054, 2026-09-02)
+- [x] Verified: `docker compose … config` clean on both dev compose files (with/without `.env`) — resolves `whisper` :9000 + `whisper2` :9001, `WHISPER2_URL=http://whisper2:9000`, mount `deploy/dev/config.yaml`; `whispercrawl --config deploy/dev/config.yaml --once --dry-run` + `load_config` resolve two engines (`whisperx` 9000 diarize=True, `faster` 9001 diarize=False); `bash -n` clean on all 7 edited scripts; root `config.yaml` unchanged (EPIC-054, 2026-09-02)
+
+---
+
 ## EPIC-053: Remove the `cleanup:` Config Section — Drop `CleanupConfig` / `cleanup.on`
 
 _Depends on EPIC-052. See [epics/EPIC-053-remove-cleanup-config-section.md](../epics/EPIC-053-remove-cleanup-config-section.md). Landed 2026-09-02._

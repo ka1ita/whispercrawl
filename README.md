@@ -49,7 +49,7 @@ mkdir -p audio logs
 docker compose -f deploy/dev/docker-compose.dev.yml up -d
 ```
 
-This starts whisper-asr-webservice, Ollama, and whispercrawl in Docker. Pull the LLM model before first use:
+This starts two whisper-asr-webservice instances (`whisper` on port 9000, `whisper2` on 9001 — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
 
 ```bash
 docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
@@ -204,8 +204,9 @@ Dockerfile                              # whispercrawl image (multi-stage, non-r
 deploy/
   dev/
     .env.example                        # environment variable template (copy to .env here)
-    docker-compose.dev.yml              # all three services in Docker
-    docker-compose.services.yml         # whisper + ollama only (run whispercrawl locally)
+    config.yaml                         # dev config — two ASR engines wired (whisper :9000, whisper2 :9001)
+    docker-compose.dev.yml              # all services in Docker (whisper x2, ollama, whispercrawl)
+    docker-compose.services.yml         # whisper x2 + ollama only (run whispercrawl locally)
     app-docker-start.sh / app-docker-stop.sh / docker-rebuild.sh # full stack in Docker
     app-python.sh / app-python-once.sh / app-python-cleanup.sh   # whispercrawl locally via Python
     services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh   # whisper + ollama only
@@ -221,7 +222,7 @@ All compose files mount the following into the container:
 | Mount | Host path | Purpose |
 | --- | --- | --- |
 | `/audio` | `./audio/` | Audio/video files to process (`watch_dir: /audio` in config) |
-| `/config.yaml` | `./config.yaml` | Pipeline config (read-only) |
+| `/config.yaml` | `./config.yaml` (dev stack: `deploy/dev/config.yaml`) | Pipeline config (read-only) |
 | `/logs` | `./logs/` | Application log + service request log |
 
 ---

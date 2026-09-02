@@ -12,6 +12,6 @@ ENV_ARGS=()
 [[ -f "$SCRIPT_DIR/.env" ]] && ENV_ARGS=(--env-file "$SCRIPT_DIR/.env")
 
 docker compose -f "$SCRIPT_DIR/docker-compose.services.yml" "${ENV_ARGS[@]}" up -d
-echo "External services started (whisper :9000, ollama :11434)."
+echo "External services started (whisper :9000, whisper2 :9001, ollama :11434)."
 echo "Pull a model if needed:"
 echo "  docker compose -f $SCRIPT_DIR/docker-compose.services.yml exec ollama ollama pull gemma3:1b"

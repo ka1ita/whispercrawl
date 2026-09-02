@@ -35,9 +35,15 @@ outputs separate (`<file>_<name>.<ext>`, `_<dirname>_<name>.<ext>`, and separate
 processing-index rows). It does not use any multi-model feature of a single
 service — run one `whisper-asr-webservice` per engine.
 
+The dev stack runs two instances out of the box (EPIC-054): `whisper` on host
+port 9000 (`ASR_ENGINE=whisperx`) and `whisper2` on 9001
+(`ASR_ENGINE=faster_whisper`), wired as the `whisperx` / `faster` engines in
+`deploy/dev/config.yaml`. Override the models/engines via `ASR_MODEL(2)` /
+`ASR_ENGINE(2)` in `deploy/dev/.env`.
+
 ## Docker (dev)
 
 ```yaml
-# See deploy/dev/docker-compose.dev.yml
+# See deploy/dev/docker-compose.dev.yml — whisper (:9000) and whisper2 (:9001)
 image: ${ASR_IMAGE:-asr-webservice:latest}   # mirrored from onerahmet/openai-whisper-asr-webservice:latest
 ```
