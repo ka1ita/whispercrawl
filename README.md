@@ -208,7 +208,7 @@ deploy/
     .env.example                        # environment variable template (copy to .env here)
     docker-compose.dev.yml              # all three services in Docker
     docker-compose.services.yml         # whisper + ollama only (run whispercrawl locally)
-    start.sh / stop.sh / rebuild.sh / start-external.sh
+    start.sh / stop.sh / rebuild.sh / start-services.sh
   prod/
     docker-compose.prod.yml             # whispercrawl only — URLs from environment variables
     setup.sh / service-start.sh / service-down.sh

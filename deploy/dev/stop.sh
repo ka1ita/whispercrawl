@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Stop the full dev stack (docker-compose.dev.yml).
-# If you started only external services via start-external.sh, use:
-#   bash start-external.sh down   (or: docker compose -f deploy/dev/docker-compose.services.yml down)
+# If you started only the external services via start-services.sh, use:
+#   bash start-services.sh down   (or: docker compose -f deploy/dev/docker-compose.services.yml down)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
