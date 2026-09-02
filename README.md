@@ -49,13 +49,13 @@ mkdir -p audio logs
 docker compose -f deploy/dev/docker-compose.dev.yml up -d
 ```
 
-This starts two whisper-asr-webservice instances (`whisper` on port 9000, `whisper2` on 9001 — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
+This starts two whisper-asr-webservice instances (`whisper` on port 9000 running `whisperx`, `whisper2` on 9001 running `gigaam`/`v1_rnnt` — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
 
 ```bash
 docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
 ```
 
-**Speaker diarization** requires a HuggingFace token (whisperx uses pyannote.audio):
+**Speaker diarization** requires a HuggingFace token (both the `whisperx` and `gigaam` engines use pyannote.audio):
 
 1. Accept the model licence at <https://huggingface.co/pyannote/speaker-diarization-3.1>
 2. Create a token at <https://huggingface.co/settings/tokens>

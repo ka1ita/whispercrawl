@@ -2,6 +2,17 @@
 
 **Status**: Landed 2026-09-02. See [ADR-008](../docs/architecture/decisions/ADR-008-dev-second-asr-engine.md).
 
+> **Follow-up 2026-09-02**: the second engine's default was changed from
+> `faster_whisper`/`tiny` to `gigaam`/`v1_rnnt` (with `ASR_REQUEST_LOGGING=true`),
+> and its `engines:` entry / output-file suffix renamed `faster` → `gigaam`.
+> GigaAM is a purpose-built Russian model, a better contrast with `whisperx` for
+> the Russian-language dev material. Unlike `faster_whisper`, `gigaam` **does**
+> diarize (pyannote), so the `diarize: false` override on that entry was dropped —
+> it now inherits `diarize: true` / `speaker_timestamps: true` from the base block
+> (the `whisper2` container already receives `HF_TOKEN`). `ASR_MODEL` values and
+> per-engine diarization support are documented in
+> [docs/api/whisper-asr-webservice.md](../docs/api/whisper-asr-webservice.md).
+
 ## Goal
 
 Make the two-engine path from [[EPIC-048]] runnable in the dev environment out
@@ -96,6 +107,9 @@ Related: [[EPIC-012]] (docker environments), [[EPIC-050]] (ASR image rename),
         url: ${WHISPER2_URL:http://127.0.0.1:9001}
         diarize: false            # faster_whisper has no diarization
   ```
+
+  (superseded — see the Follow-up note above: the second engine is now `gigaam`,
+  which diarizes, so this entry has no `diarize` override.)
 
   - `127.0.0.1` not `localhost` — the existing Windows/IPv6 multipart-stall note
     in `config.yaml` applies here too; carry that comment over.

@@ -131,7 +131,7 @@ engine). Key sections: `transcription`, `postprocessing`, `file_summarization`,
 `dir_summarization`, `result`, `formatter`, `schedule`.
 [deploy/dev/config.yaml](deploy/dev/config.yaml) is the dev copy — same sections,
 but with `transcription.engines` pre-wired to two ASR services (`whisperx` :9000,
-`faster` :9001); the dev Docker stack and `deploy/dev/app-python*.sh` use it (EPIC-054).
+`gigaam` :9001); the dev Docker stack and `deploy/dev/app-python*.sh` use it (EPIC-054).
 
 ## Planning Files
 

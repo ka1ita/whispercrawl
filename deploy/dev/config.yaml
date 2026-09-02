@@ -1,7 +1,7 @@
 # WhisperCrawl — DEV configuration (EPIC-054)
 #
 # This is the dev copy of the project-root config.yaml. It pre-wires TWO ASR
-# engines (transcription.engines below): `whisperx` on :9000 and `faster` on
+# engines (transcription.engines below): `whisperx` on :9000 and `gigaam` on
 # :9001. The project-root config.yaml stays the single-engine working example.
 #
 # Used by:
@@ -86,7 +86,7 @@ result:
 # own rows in the processing index.
 transcription:
   language: ru                    # Default language: auto, ru, en, etc.
-  diarize: true                    # Enable speaker diarization (requires HF_TOKEN in whisper container for whisperx)
+  diarize: true                    # Enable speaker diarization (requires HF_TOKEN in the ASR container — both whisperx and gigaam use pyannote)
   timeout: 3600                     # HTTP timeout in seconds (whisperx large on CPU is slow)
   speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""               # Hint text passed to the model
@@ -96,9 +96,9 @@ transcription:
       # proxy); use 127.0.0.1. The dev Docker stack overrides WHISPER_URL to
       # http://whisper:9000 (internal network).
       url: ${WHISPER_URL:http://127.0.0.1:9000}
-    - name: faster
+    - name: gigaam
       url: ${WHISPER2_URL:http://127.0.0.1:9001}   # stack overrides to http://whisper2:9000
-      diarize: false                                # faster_whisper has no diarization
+      # inherits diarize: true / speaker_timestamps: true from the base block
 
 # ── Post-Processing ───────────────────────────────────────────────────────────
 postprocessing:

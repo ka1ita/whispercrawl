@@ -36,8 +36,9 @@ services:
     ports:
       - "9001:9000"
     environment:
-      ASR_MODEL: ${ASR_MODEL2:-tiny}          # tiny | base | small | medium | large
-      ASR_ENGINE: ${ASR_ENGINE2:-faster_whisper}   # a different engine from `whisper` so the two results differ
+      ASR_MODEL: ${ASR_MODEL2:-v1_rnnt}      # gigaam: v1_rnnt | v1_ctc | v2_rnnt | v2_ctc
+      ASR_ENGINE: ${ASR_ENGINE2:-gigaam}    # a different engine from `whisper` so the two results differ
+      ASR_REQUEST_LOGGING: ${ASR_REQUEST_LOGGING2:-true}
       HF_TOKEN: ${HF_TOKEN}
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true
