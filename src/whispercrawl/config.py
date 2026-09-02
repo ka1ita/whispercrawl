@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -157,6 +157,14 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     result: ResultConfig = field(default_factory=ResultConfig)
 
+    def __post_init__(self) -> None:
+        # There is always at least one ASR engine. When none is configured, the
+        # top-level transcription block *is* the single implicit engine (name "");
+        # a copy goes in the list so iterating `transcription.engines` is the one
+        # way to reach the engine set. See load_config for the multi-engine path.
+        if not self.transcription.engines:
+            self.transcription.engines = [replace(self.transcription, engines=[])]
+
 
 def _build(cls, d: dict):
     known = cls.__dataclass_fields__
@@ -218,24 +226,22 @@ def load_config(path: Path) -> Config:
     engine_entries = tr_raw.pop("engines", None) or []
     transcription_cfg = _build(TranscriptionConfig, tr_raw)
     if engine_entries:
+        # Each entry inherits the top-level block and overrides what it names.
         resolved = []
         for entry in engine_entries:
             merged = {**tr_raw, **(entry or {})}
             merged.pop("engines", None)
             resolved.append(_build(TranscriptionConfig, merged))
-    else:
-        resolved = [_build(TranscriptionConfig, {**tr_raw, "name": ""})]
-    names = [e.name for e in resolved]
-    for n in names:
-        if engine_entries and not n:
-            raise ValueError("every transcription.engines entry needs a non-empty 'name'")
-        if n and not _ENGINE_NAME_RE.match(n):
-            raise ValueError(
-                f"transcription engine name {n!r} must match [A-Za-z0-9._-]+"
-            )
-    if len(names) != len(set(names)):
-        raise ValueError(f"transcription engine names must be unique, got {names!r}")
-    transcription_cfg.engines = resolved
+        names = [e.name for e in resolved]
+        for n in names:
+            if not n:
+                raise ValueError("every transcription.engines entry needs a non-empty 'name'")
+            if not _ENGINE_NAME_RE.match(n):
+                raise ValueError(f"transcription engine name {n!r} must match [A-Za-z0-9._-]+")
+        if len(names) != len(set(names)):
+            raise ValueError(f"transcription engine names must be unique, got {names!r}")
+        transcription_cfg.engines = resolved
+    # else: Config.__post_init__ fills .engines with a copy of the base block
 
     watch_dir = Path(raw["watch_dir"])
 

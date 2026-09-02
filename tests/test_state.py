@@ -131,7 +131,7 @@ class TestStepResume:
         assert rec.status == "done"
         assert set(rec.steps.split(",")) == {"transcribe", "postprocess"}
 
-    def test_migration_adds_text_columns_to_v2_db(self, tmp_path: Path):
+    def test_migration_from_v2_db_preserves_rows_and_adds_asr_results(self, tmp_path: Path):
         db = tmp_path / "old.db"
         conn = sqlite3.connect(str(db))
         conn.executescript(
@@ -160,9 +160,9 @@ class TestStepResume:
             rec = st.lookup("old.mp3")
             assert rec.status == "done"
             assert rec.steps == "transcribe"
-            assert rec.asr_text is None
-            assert rec.fixed_text is None
-            assert st.get_text("old.mp3", "asr", 1.0, 10) is None
+            assert st.get_text("old.mp3", "asr", 1.0, 10) is None  # no text stored yet
+            st.save_text("old.mp3", "asr", "t", 1.0, 10)
+            assert st.get_text("old.mp3", "asr", 1.0, 10) == "t"  # asr_results table works
 
 
 class TestTextStorage:

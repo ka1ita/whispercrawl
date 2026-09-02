@@ -8,8 +8,8 @@
 `transcription` was a single `TranscriptionConfig` with one `url`. Comparing a
 second `whisper-asr-webservice` deployment, engine, or parameter set against the
 current one meant editing config, a full `rescan: true`, saving the outputs
-elsewhere, reverting, and running again — and the EPIC-046 index only had room
-for one `asr_text` / `fixed_text` per file, so the first result was overwritten.
+elsewhere, reverting, and running again — and the EPIC-046 index stored one
+`asr_text` / `fixed_text` per file, so a second engine would overwrite the first.
 
 ## Decision
 
@@ -17,7 +17,9 @@ for one `asr_text` / `fixed_text` per file, so the first result was overwritten.
 top-level `transcription` block (entry values win, unset fields inherit) and has
 a filename-safe, unique `name`. `load_config` resolves this into
 `config.transcription.engines` — a non-empty list of `TranscriptionConfig`. With
-no `engines:` key there is one implicit engine with `name == ""`.
+no `engines:` key `Config.__post_init__` fills the list with a copy of the base
+block, `name == ""` — so iterating `config.transcription.engines` is the single
+way to reach the engine set, single- and multi-engine alike.
 
 - **`engine_label(name)`** → `"_<name>"` for a named engine, `""` for the
   implicit one. Applied to every result / error filename and every
@@ -29,11 +31,13 @@ no `engines:` key there is one implicit engine with `name == ""`.
   `per_step` batches each step across all `(file, engine)` pairs. `_finalize_file`
   records the file `done` only once every engine finished, `error` otherwise
   (detail names the failed engines).
-- **Index** (`state.py`, schema v4): a new `asr_results(path, engine, kind, text,
-  mtime, size)` table holds named engines' text; the implicit engine keeps using
-  the `files.asr_text` / `fixed_text` columns (zero migration risk). Step tokens
-  for a named engine are suffixed `:<name>`. `mark_step`'s mtime/size-mismatch
-  reset also clears the file's `asr_results` rows.
+- **Index** (`state.py`, schema v4): a single `asr_results(path, engine, kind,
+  text, mtime, size)` table holds every engine's text, `engine == ""` included.
+  The EPIC-046 `files.asr_text` / `fixed_text` columns are dropped — the feature
+  had not shipped, so no data migration was needed and one code path is simpler
+  than a branch on `engine`. Step tokens for a named engine are suffixed
+  `:<name>`; `mark_step`'s mtime/size-mismatch reset deletes the file's
+  `asr_results` rows.
 - **Isolation**: one engine's `TranscriptionError` writes
   `<file>_<name>_err.txt` and drops only that engine; the others still produce
   results, and the next run resumes the succeeded engines from the index and
@@ -45,10 +49,11 @@ no `engines:` key there is one implicit engine with `name == ""`.
 
 ## Alternatives considered
 
-- **One wide `asr_results` table for every engine including the implicit one,
-  dropping the `files` text columns.** Rejected for now — it forces a data
-  migration of every existing v3 row and rewrites ~30 passing state tests for no
-  functional gain. The dual store is a small, well-contained branch on `engine`.
+- **Keeping the `files.asr_text` / `fixed_text` columns for `engine == ""` and
+  a side table only for named engines.** Was the first cut (zero-migration), but
+  once it was clear EPIC-046's text store had not been deployed, collapsing to
+  one table removed a real branch from `save_text` / `get_text` / `mark_step` at
+  no cost.
 - **A separate config file per engine.** Rejected — the engine set is a property
   of one install; running N configs loses the shared traversal state and the
   single index.
@@ -72,3 +77,6 @@ no `engines:` key there is one implicit engine with `name == ""`.
   result files are swept by the next `--cleanup`.
 - Changing `speaker_timestamps` / `diarize` / `language` for an engine still
   needs a real re-transcribe (`rescan: true`), same as the single-engine case.
+- Schema v4 drops `files.asr_text` / `fixed_text`. A dev DB created at v3 keeps
+  those (now-unread) columns — harmless; `state.db` is safe to delete and
+  rebuilds from existing output files.

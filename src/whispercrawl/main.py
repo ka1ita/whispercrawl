@@ -55,7 +55,7 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
     """Delete pipeline output files under watch_dir without running the pipeline."""
     fmt = config.formatter.format
     targets = config.cleanup.targets
-    elabels = [engine_label(e.name) for e in (config.transcription.engines or [config.transcription])]
+    elabels = [engine_label(e.name) for e in config.transcription.engines]
     removed = 0
 
     for media_path in sorted(config.watch_dir.rglob("*")):
@@ -176,7 +176,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
     from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
     from whispercrawl.utils.service_logger import ServiceLogger
 
-    _engines = config.transcription.engines or [config.transcription]
+    engines = config.transcription.engines
     files = list(iter_media_files(
         config.watch_dir,
         config.extensions,
@@ -187,7 +187,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         config.max_age_days,
         state,
         ignore_processed=refresh,
-        engine_labels=[engine_label(e.name) for e in _engines],
+        engine_labels=[engine_label(e.name) for e in engines],
     ))
 
     if config.max_files_per_run is not None and len(files) > config.max_files_per_run:
@@ -201,7 +201,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
     fmt = config.formatter.format
     cleaner = Cleaner(
         config.cleanup, fmt,
-        engine_labels=[engine_label(e.name) for e in _engines],
+        engine_labels=[engine_label(e.name) for e in engines],
     )
     _rescan_labels = [s for s in config.cleanup.targets if not s.endswith(".json")]
 
@@ -223,9 +223,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
     def _record(rel: str, fst, status: str, detail: str = "") -> None:
         if fst is not None:
             state.mark(rel, status, fst.st_mtime, fst.st_size, detail)
-
-
-    engines = config.transcription.engines or [config.transcription]
 
     _log_base = Path(config.logging.log_dir) if config.logging.log_dir else config.watch_dir / "logs"
     with ServiceLogger(config.logging, watch_dir=config.watch_dir) as svc_log:

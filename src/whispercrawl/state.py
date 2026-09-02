@@ -35,32 +35,26 @@ CREATE TABLE IF NOT EXISTS files (
     status     TEXT NOT NULL,
     updated_at REAL NOT NULL,
     detail     TEXT NOT NULL DEFAULT '',
-    steps      TEXT NOT NULL DEFAULT '',
-    asr_text   TEXT,
-    fixed_text TEXT
+    steps      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
--- EPIC-048: per-engine ASR / post-processed text. The ``files`` columns
--- ``asr_text`` / ``fixed_text`` remain the store for the single implicit
--- engine (``engine = ''``); named engines live here.
+-- ASR / post-processed text per file per ASR engine (EPIC-046 store, made
+-- per-engine in EPIC-048). ``engine = ''`` is the single implicit engine.
+-- Powers ``--refresh`` — every step downstream of ASR re-runs from this text
+-- with no whisper call.
 CREATE TABLE IF NOT EXISTS asr_results (
     path   TEXT NOT NULL,
     engine TEXT NOT NULL,
-    kind   TEXT NOT NULL,
+    kind   TEXT NOT NULL,          -- 'asr' | 'fixed'
     text   TEXT,
     mtime  REAL,
     size   INTEGER,
     PRIMARY KEY (path, engine, kind)
 );
 """
-
-# Text payloads stored on the row so `--refresh` can re-run every step
-# downstream of ASR without another whisper call. See EPIC-046. Used only for
-# the single implicit engine (``engine == ""``); named engines use asr_results.
-_TEXT_COLUMNS = {"asr": "asr_text", "fixed": "fixed_text"}
 
 
 @dataclass(frozen=True)
@@ -72,8 +66,6 @@ class Record:
     updated_at: float
     detail: str
     steps: str = ""
-    asr_text: Optional[str] = None
-    fixed_text: Optional[str] = None
 
 
 class ProcessingState:
@@ -93,10 +85,6 @@ class ProcessingState:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(files)")}
         if "steps" not in columns:
             conn.execute("ALTER TABLE files ADD COLUMN steps TEXT NOT NULL DEFAULT ''")
-        if "asr_text" not in columns:
-            conn.execute("ALTER TABLE files ADD COLUMN asr_text TEXT")
-        if "fixed_text" not in columns:
-            conn.execute("ALTER TABLE files ADD COLUMN fixed_text TEXT")
         conn.execute(
             "INSERT INTO meta(key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (SCHEMA_VERSION,),
@@ -106,7 +94,7 @@ class ProcessingState:
 
     def lookup(self, rel_path: str) -> Optional[Record]:
         row = self._conn.execute(
-            "SELECT path, mtime, size, status, updated_at, detail, steps, asr_text, fixed_text "
+            "SELECT path, mtime, size, status, updated_at, detail, steps "
             "FROM files WHERE path = ?",
             (rel_path,),
         ).fetchone()
@@ -152,7 +140,7 @@ class ProcessingState:
         if changed:
             self._conn.execute(
                 "UPDATE files SET mtime=?, size=?, status='partial', updated_at=?, "
-                "steps=?, asr_text=NULL, fixed_text=NULL WHERE path=?",
+                "steps=? WHERE path=?",
                 (mtime, size, time.time(), joined, rel_path),
             )
             self._conn.execute("DELETE FROM asr_results WHERE path=?", (rel_path,))
@@ -170,28 +158,17 @@ class ProcessingState:
     def save_text(
         self, rel_path: str, kind: str, text: str, mtime: float, size: int, engine: str = ""
     ) -> None:
-        """Persist a step's text output (``kind`` is ``"asr"`` or ``"fixed"``).
+        """Persist a step's text output for one engine (``kind`` ∈ ``asr`` / ``fixed``).
 
-        The single implicit engine (``engine == ""``) uses the ``files`` text
-        columns; a named engine uses the ``asr_results`` table. Keyed to the
-        file's current mtime/size so ``--refresh`` can read it back.
+        Keyed to the file's current mtime/size so ``--refresh`` can read it back.
+        ``engine == ""`` is the single implicit engine.
         """
-        if engine:
-            self._conn.execute(
-                "INSERT INTO asr_results(path, engine, kind, text, mtime, size) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(path, engine, kind) DO UPDATE SET "
-                "text=excluded.text, mtime=excluded.mtime, size=excluded.size",
-                (rel_path, engine, kind, text, mtime, size),
-            )
-            self._conn.commit()
-            return
-        col = _TEXT_COLUMNS[kind]
         self._conn.execute(
-            f"INSERT INTO files(path, mtime, size, status, updated_at, {col}) "
-            f"VALUES (?, ?, ?, 'partial', ?, ?) "
-            f"ON CONFLICT(path) DO UPDATE SET {col}=excluded.{col}, updated_at=excluded.updated_at",
-            (rel_path, mtime, size, time.time(), text),
+            "INSERT INTO asr_results(path, engine, kind, text, mtime, size) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(path, engine, kind) DO UPDATE SET "
+            "text=excluded.text, mtime=excluded.mtime, size=excluded.size",
+            (rel_path, engine, kind, text, mtime, size),
         )
         self._conn.commit()
 
@@ -200,21 +177,16 @@ class ProcessingState:
     ) -> Optional[str]:
         """Return the stored text for an unchanged file, else ``None``.
 
-        ``None`` when there is no row, the row's mtime/size don't match, or the
-        text was never populated for this engine.
+        ``None`` when there is no row for this engine, or its mtime/size don't
+        match the arguments (the file changed since the text was written).
         """
-        if engine:
-            row = self._conn.execute(
-                "SELECT text, mtime, size FROM asr_results WHERE path=? AND engine=? AND kind=?",
-                (rel_path, engine, kind),
-            ).fetchone()
-            if row is None or abs(row[1] - mtime) >= _MTIME_TOLERANCE or row[2] != size:
-                return None
-            return row[0]
-        rec = self.lookup(rel_path)
-        if rec is None or abs(rec.mtime - mtime) >= _MTIME_TOLERANCE or rec.size != size:
+        row = self._conn.execute(
+            "SELECT text, mtime, size FROM asr_results WHERE path=? AND engine=? AND kind=?",
+            (rel_path, engine, kind),
+        ).fetchone()
+        if row is None or abs(row[1] - mtime) >= _MTIME_TOLERANCE or row[2] != size:
             return None
-        return rec.asr_text if kind == "asr" else rec.fixed_text
+        return row[0]
 
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         """True when a ``done`` record exists for an unchanged file (mtime + size)."""
