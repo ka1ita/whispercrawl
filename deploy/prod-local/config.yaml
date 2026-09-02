@@ -69,6 +69,7 @@ transcription:
   timeout: 3600
   # speaker_timestamps: false          # Prefix each speaker segment with HH:MM:SS start time
   # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
+  # concurrency: 1        # EPIC-056 — engines' /asr calls in flight at once (1 = sequential)
   # engines:
   #   - name: whisperx
   #     url: http://asr-webservice:9000

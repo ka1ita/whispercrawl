@@ -4,6 +4,30 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-056: Concurrent Multi-Engine Transcription
+
+_Depends on EPIC-048 (landed). Parallelises the per-file `for eng in engines`
+transcribe loop behind a new `transcription.concurrency` knob (int, default `1` =
+today's sequential behaviour). Only the `/asr` HTTP call runs in parallel;
+post-processing / summarization / dir pass stay sequential. `state` (SQLite) is
+written only from the main thread — the worker returns a result, the main thread
+applies it. See [epics/EPIC-056-concurrent-multi-engine-transcription.md](../epics/EPIC-056-concurrent-multi-engine-transcription.md)._
+
+- [x] `config.py`: `TranscriptionConfig.concurrency: int = 1` (top-level block only — popped from the per-engine merge, and `replace(..., concurrency=1)` on the implicit engine); `load_config` validates `>= 1`; value above engine count allowed (EPIC-056, 2026-09-02)
+- [x] `main.py`: split `_transcribe_engine` → `_prepare_file` + `_prepare_engine` (main thread: logging/stat/`file_meta`/`clean_other_formats` + resume-steps + stored-ASR reads) / `_transcribe_engine_call(file_path, plan)` (pure worker: reuse stored text or `transcribers[name].transcribe`; catches `TranscriptionError` + the ADR-009 catch-all and returns them; propagates `KeyboardInterrupt`/`SystemExit`) / `_apply_engine_result` + `_apply_file` (main thread: `mark_step` + `save_text` on success, `_report_error` + `file_engine_ok` on failure, populate `dir_file_texts`, build context dict) (EPIC-056, 2026-09-02)
+- [x] `main.py` `_run_transcribe_calls(flat)`: sequential (no pool) when `concurrency <= 1` or `<= 1` pair; else `ThreadPoolExecutor(max_workers=min(concurrency, len(flat)))`, results kept in submit order, `KeyboardInterrupt`/`SystemExit` from `future.result()` → `ex.shutdown(wait=False, cancel_futures=True)` + re-raise; `_record_all_partial` on the way out (EPIC-056, 2026-09-02)
+- [x] `main.py` `per_file`: one `_run_transcribe_calls` per file over its engines; `per_step`: one `_run_transcribe_calls` over every `(file, plan)` pair across the whole transcribe phase; later `step_fn` loops untouched (EPIC-056, 2026-09-02)
+- [x] `main.py` `--refresh` path: `concurrency = 1 if refresh else config.transcription.concurrency` — no executor; code comment on the line (EPIC-056, 2026-09-02)
+- [x] `ServiceLogger`: `threading.Lock` around the ndjson write in `.log(...)`; class docstring notes concurrent-caller safety (EPIC-056, 2026-09-02)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: commented `concurrency:` under `transcription:` noting only the `/asr` calls overlap; `deploy/dev/config.yaml`: `concurrency: 2` (its two engines are the motivation) (EPIC-056, 2026-09-02)
+- [x] Docs — `CLAUDE.md` ("Multiple ASR engines" bullet), `docs/architecture/overview.md` (new "Concurrent transcription" para + `TranscriptionConfig` row), new `docs/architecture/decisions/ADR-010-concurrent-transcription.md`, `epics/EPIC-048-multiple-asr-engines.md` (Out-of-Scope note → delivered by EPIC-056) (EPIC-056, 2026-09-02)
+- [x] Tests — `test_config.py` `TestTranscriptionConcurrency`: defaults `1`; explicit value; `> len(engines)` loads; `0` / negative → `ValueError`; not merged onto per-engine configs (EPIC-056, 2026-09-02)
+- [x] Tests — new `test_concurrent_transcription.py` (10): `concurrency: 1` and single-engine → `whispercrawl.main.ThreadPoolExecutor` never called (spy); output + `asr_results` identical at `concurrency` 1 vs 3 (`per_file` and `per_step`); 3 sleeping engines at `concurrency: 3` → one file `< 2*delay`; `per_step` 4 files × 2 engines at `concurrency: 3` → in-flight peak `<= 3` and `> 1`; one engine `TranscriptionError` / bare `RuntimeError` at `concurrency: 2` → that engine's `transcribe` `errors` row, other engine intact, file `error`; `KeyboardInterrupt` from one engine → `raises KeyboardInterrupt` + file `partial`; `--refresh` → pool never constructed (EPIC-056, 2026-09-02)
+- [x] Tests — `test_service_logger.py`: 40 threads hammering `.log()` → 40 well-formed non-interleaved lines (EPIC-056, 2026-09-02)
+- [x] Verified: full suite 477 passing; `ruff check src` unchanged at baseline; `load_config('deploy/dev/config.yaml')` → `concurrency == 2`, two engines, per-engine `concurrency == 1` (EPIC-056, 2026-09-02)
+
+---
+
 ## EPIC-055: A Step's Unexpected Exception Must Not Crash the Run
 
 _Robustness fix. A `FileNotFoundError` (source moved/deleted between discovery and

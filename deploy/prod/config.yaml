@@ -79,6 +79,9 @@ transcription:
   # Multiple ASR engines (EPIC-048): leave 'engines' unset for one engine.
   # Each entry inherits the settings above; every engine transcribes every file
   # and gets its own <file>_<name>.<ext> / _<dirname>_<name>.<ext> results.
+  # concurrency: 1        # EPIC-056 — engines' /asr calls in flight at once (1 = sequential).
+  #                       # Raise it when the engines are independent services; only the
+  #                       # transcribe call overlaps, downstream steps stay sequential.
   # engines:
   #   - name: whisperx
   #     url: http://localhost:9000

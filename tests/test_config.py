@@ -166,6 +166,42 @@ class TestTranscriptionEngines:
             ))
 
 
+class TestTranscriptionConcurrency:
+    def test_defaults_to_one(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, ""))
+        assert cfg.transcription.concurrency == 1
+
+    def test_explicit_value_loads(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, "transcription:\n  concurrency: 3\n"))
+        assert cfg.transcription.concurrency == 3
+
+    def test_value_above_engine_count_is_allowed(self, tmp_path: Path):
+        cfg = load_config(_write(
+            tmp_path,
+            "transcription:\n"
+            "  concurrency: 9\n"
+            "  engines:\n    - name: a\n    - name: b\n",
+        ))
+        assert cfg.transcription.concurrency == 9
+
+    def test_zero_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="concurrency"):
+            load_config(_write(tmp_path, "transcription:\n  concurrency: 0\n"))
+
+    def test_negative_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="concurrency"):
+            load_config(_write(tmp_path, "transcription:\n  concurrency: -2\n"))
+
+    def test_not_merged_onto_per_engine_configs(self, tmp_path: Path):
+        cfg = load_config(_write(
+            tmp_path,
+            "transcription:\n"
+            "  concurrency: 4\n"
+            "  engines:\n    - name: a\n    - name: b\n",
+        ))
+        assert all(e.concurrency == 1 for e in cfg.transcription.engines)
+
+
 class TestProcessingMode:
     def test_defaults_to_per_file(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, ""))

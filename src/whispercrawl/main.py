@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from whispercrawl.config import Config, engine_label, load_config
@@ -199,6 +200,9 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         )
 
     engines = config.transcription.engines
+    # EPIC-056 — max engine /asr calls in flight at once. Never parallelise the
+    # --refresh path (no HTTP call) or a single-engine run (nothing to overlap).
+    concurrency = 1 if refresh else config.transcription.concurrency
     files = list(iter_media_files(
         config.watch_dir,
         config.extensions,
@@ -278,10 +282,14 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             "transcript": config.result.transcript_heading,
         }
 
-        def _transcribe_file(file_path: Path) -> list:
-            """Run/resume the transcribe step for every engine. Returns one context
-            dict per engine that produced a transcript (a failed / skipped engine is
-            simply absent from the list)."""
+        # ── Transcribe step (EPIC-056: engines may run concurrently) ───────────
+        # Split three ways so only the HTTP call touches a worker thread:
+        #   _prepare_file / _prepare_engine  — main thread, reads the index
+        #   _transcribe_engine_call          — worker, pure, no index / no shared dict
+        #   _apply_engine_result             — main thread, writes the index + dicts
+
+        def _prepare_file(file_path: Path) -> list:
+            """Main-thread setup for one file; returns its per-engine plan list."""
             logger.info("Processing: %s", file_path)
             rel = str(file_path.relative_to(config.watch_dir))
             try:
@@ -294,16 +302,10 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             if config.rescan:
                 cleaner.clean_other_formats(file_path)
 
-            contexts = []
-            for eng in engines:
-                ctx = _transcribe_engine(file_path, rel, fst, eng)
-                if ctx is not None:
-                    contexts.append(ctx)
-            return contexts
+            return [_prepare_engine(file_path, rel, fst, eng) for eng in engines]
 
-        def _transcribe_engine(file_path: Path, rel: str, fst, eng) -> "dict | None":
+        def _prepare_engine(file_path: Path, rel: str, fst, eng) -> dict:
             name = eng.name
-            elabel = engine_label(name)
             tag = f"{file_path} [{name}]" if name else str(file_path)
 
             resume_steps: set = set()
@@ -314,40 +316,89 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             if fst is not None and (refresh or "transcribe" in resume_steps):
                 stored_asr = state.get_text(rel, "asr", fst.st_mtime, fst.st_size, name)
 
+            return {
+                "name": name,
+                "elabel": engine_label(name),
+                "tag": tag,
+                "rel": rel,
+                "fst": fst,
+                "resume_steps": resume_steps,
+                "stored_asr": stored_asr,
+            }
+
+        def _transcribe_engine_call(file_path: Path, plan: dict) -> dict:
+            """Worker-thread safe: reuse stored ASR text or perform the HTTP call.
+            No index writes, no shared-dict mutation. KeyboardInterrupt / SystemExit
+            propagate to the caller; every other failure is returned as a result."""
+            name, tag = plan["name"], plan["tag"]
+            stored_asr, resume_steps = plan["stored_asr"], plan["resume_steps"]
+
             if refresh:
                 if stored_asr is None:
-                    logger.info("Refresh: no stored ASR text for %s — skipping this engine", tag)
-                    return None
-                transcript = stored_asr
-                logger.info("Refreshing from stored ASR text: %s", tag)
-            elif "transcribe" in resume_steps and stored_asr is not None:
-                transcript = stored_asr
-                logger.info("Resuming: using stored ASR transcript for %s", tag)
-            else:
-                try:
-                    transcript = transcribers[name].transcribe(file_path)
-                except TranscriptionError as e:
-                    logger.error("Transcription failed for %s: %s", tag, e)
-                    _report_error(
-                        rel, "transcribe", name, str(e),
-                        mtime=fst.st_mtime if fst is not None else None,
-                        size=fst.st_size if fst is not None else None,
-                    )
-                    file_engine_ok[file_path][name] = False
-                    return None
-                except (KeyboardInterrupt, SystemExit):
-                    _record(rel, fst, "partial", "interrupted mid-pipeline")
-                    raise
-                except Exception as e:  # noqa: BLE001 — any failure must not abort the run
-                    logger.exception("Transcription failed for %s", tag)
-                    _report_error(
-                        rel, "transcribe", name, repr(e),
-                        mtime=fst.st_mtime if fst is not None else None,
-                        size=fst.st_size if fst is not None else None,
-                    )
-                    file_engine_ok[file_path][name] = False
-                    return None
+                    return {"status": "skip"}
+                return {"status": "stored", "transcript": stored_asr}
+            if "transcribe" in resume_steps and stored_asr is not None:
+                return {"status": "stored", "transcript": stored_asr}
 
+            try:
+                transcript = transcribers[name].transcribe(file_path)
+            except TranscriptionError as e:
+                logger.error("Transcription failed for %s: %s", tag, e)
+                return {"status": "error", "message": str(e)}
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as e:  # noqa: BLE001 — any failure must not abort the run
+                logger.exception("Transcription failed for %s", tag)
+                return {"status": "error", "message": repr(e)}
+            return {"status": "called", "transcript": transcript}
+
+        def _run_transcribe_calls(flat: list) -> list:
+            """Run ``_transcribe_engine_call`` for every (file_path, plan) pair,
+            up to ``concurrency`` at once. Sequential (no pool) when concurrency is
+            1 or there is nothing to overlap."""
+            if concurrency <= 1 or len(flat) <= 1:
+                return [_transcribe_engine_call(fp, p) for fp, p in flat]
+            results: list = [None] * len(flat)
+            ex = ThreadPoolExecutor(max_workers=min(concurrency, len(flat)))
+            futures = {ex.submit(_transcribe_engine_call, fp, p): i
+                       for i, (fp, p) in enumerate(flat)}
+            try:
+                for fut in as_completed(futures):
+                    results[futures[fut]] = fut.result()
+            except (KeyboardInterrupt, SystemExit):
+                ex.shutdown(wait=False, cancel_futures=True)
+                raise
+            ex.shutdown(wait=True)
+            return results
+
+        def _apply_engine_result(file_path: Path, plan: dict, result: dict) -> "dict | None":
+            """Main-thread: apply one engine's transcribe result — index writes,
+            error recording, shared-dict population. Returns a context dict when the
+            engine produced a transcript, else None."""
+            name, tag = plan["name"], plan["tag"]
+            rel, fst = plan["rel"], plan["fst"]
+            status = result["status"]
+
+            if status == "skip":
+                logger.info("Refresh: no stored ASR text for %s — skipping this engine", tag)
+                return None
+            if status == "error":
+                _report_error(
+                    rel, "transcribe", name, result["message"],
+                    mtime=fst.st_mtime if fst is not None else None,
+                    size=fst.st_size if fst is not None else None,
+                )
+                file_engine_ok[file_path][name] = False
+                return None
+
+            transcript = result["transcript"]
+            if status == "stored":
+                logger.info(
+                    "Refreshing from stored ASR text: %s" if refresh
+                    else "Resuming: using stored ASR transcript for %s",
+                    tag,
+                )
+            else:  # "called"
                 logger.info("Transcribed: %s", tag)
                 if fst is not None:
                     state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size, name)
@@ -358,15 +409,25 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             ]
             return {
                 "engine": name,
-                "elabel": elabel,
+                "elabel": plan["elabel"],
                 "rel": rel,
                 "fst": fst,
-                "resume_steps": resume_steps,
+                "resume_steps": plan["resume_steps"],
                 "transcript": transcript,
                 "fixed_text": None,
                 "summary": "",
                 "success": True,
             }
+
+        def _apply_file(file_path: Path, plans: list, results: list) -> list:
+            """Main-thread: apply every engine result for one file; returns the
+            context dicts for engines that produced a transcript."""
+            contexts = []
+            for plan, result in zip(plans, results):
+                ctx = _apply_engine_result(file_path, plan, result)
+                if ctx is not None:
+                    contexts.append(ctx)
+            return contexts
 
         def _postprocess_one(file_path: Path, ctx: dict) -> None:
             if not postprocessor:
@@ -512,16 +573,43 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             file_engine_ok.setdefault(file_path, {}).setdefault("", False)
             _record(rel, fst, "error", "unexpected failure during processing")
 
+        def _record_all_partial(file_paths) -> None:
+            for fp in file_paths:
+                rel_fst = file_meta.get(fp)
+                if rel_fst is not None:
+                    _record(rel_fst[0], rel_fst[1], "partial", "interrupted mid-pipeline")
+
         if config.processing_mode == "per_step":
-            pairs: list = []
+            # Transcribe phase: one bounded pool over every (file, engine) pair, so
+            # at most `concurrency` /asr calls are ever in flight across the phase.
+            prepared: list = []  # (file_path, plans)
             for file_path in files:
                 try:
-                    for ctx in _transcribe_file(file_path):
+                    prepared.append((file_path, _prepare_file(file_path)))
+                except (KeyboardInterrupt, SystemExit):
+                    raise
+                except Exception:  # noqa: BLE001
+                    _unexpected_file_failure(file_path)
+            flat = [(fp, plan) for fp, plans in prepared for plan in plans]
+            try:
+                flat_results = _run_transcribe_calls(flat)
+            except (KeyboardInterrupt, SystemExit):
+                _record_all_partial(fp for fp, _ in prepared)
+                raise
+
+            pairs: list = []
+            cursor = 0
+            for file_path, plans in prepared:
+                results = flat_results[cursor:cursor + len(plans)]
+                cursor += len(plans)
+                try:
+                    for ctx in _apply_file(file_path, plans, results):
                         pairs.append((file_path, ctx))
                 except (KeyboardInterrupt, SystemExit):
                     raise
                 except Exception:  # noqa: BLE001
                     _unexpected_file_failure(file_path)
+
             for step_fn in (_postprocess_one, _summarize_one, _finalize_one):
                 for file_path, ctx in pairs:
                     try:
@@ -537,7 +625,13 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         else:
             for file_path in files:
                 try:
-                    for ctx in _transcribe_file(file_path):
+                    plans = _prepare_file(file_path)
+                    try:
+                        results = _run_transcribe_calls([(file_path, p) for p in plans])
+                    except (KeyboardInterrupt, SystemExit):
+                        _record_all_partial([file_path])
+                        raise
+                    for ctx in _apply_file(file_path, plans, results):
                         _postprocess_one(file_path, ctx)
                         _summarize_one(file_path, ctx)
                         _finalize_one(file_path, ctx)

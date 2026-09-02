@@ -266,6 +266,8 @@ an engine-keyed side table.
 
 - **Concurrent transcription** (calling the engines in parallel threads). This
   epic runs engines sequentially; a parallel executor is a later optimization.
+  *Delivered by [[EPIC-056]] — `transcription.concurrency`, opt-in, default
+  sequential.*
 - **Cross-engine merged / "best of" transcript.** Each engine's output stays
   separate; picking or diffing them is a downstream tool, not this epic.
 - **Per-engine `postprocessing` / `*_summarization` prompts or models.**

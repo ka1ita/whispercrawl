@@ -1,5 +1,6 @@
 ﻿"""Tests for ServiceLogger."""
 import json
+import threading
 
 import pytest
 
@@ -69,6 +70,26 @@ class TestServiceLoggerEnabled:
         assert len(lines) == 2
         assert json.loads(lines[0])["service"] == "whisper"
         assert json.loads(lines[1])["service"] == "ollama"
+
+    def test_concurrent_log_calls_produce_well_formed_lines(self, tmp_path):
+        log_file = tmp_path / "calls.ndjson"
+        cfg = LoggingConfig(requests=True, log_file=str(log_file))
+        n = 40
+
+        with ServiceLogger(cfg) as sl:
+            def worker(i: int) -> None:
+                sl.log(**{**_LOG_KWARGS, "file": f"call-{i}.mp3"})
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        lines = log_file.read_text().strip().splitlines()
+        assert len(lines) == n
+        files = sorted(json.loads(ln)["file"] for ln in lines)  # every line parses
+        assert files == sorted(f"call-{i}.mp3" for i in range(n))
 
     def test_duration_is_rounded_to_three_decimals(self, tmp_path):
         log_file = tmp_path / "calls.ndjson"

@@ -90,6 +90,11 @@ transcription:
   # engine transcribes every file and gets its own result files
   #   <file>_<name>.<ext>   and   _<dirname>_<name>.<ext>
   # and its own rows in the processing index.
+  # concurrency: 1        # EPIC-056 — engines' /asr calls in flight at once.
+  #                       # 1 = sequential (default). Raise it (e.g. 2) when the
+  #                       # engines below are separate services that can both
+  #                       # work at once — only the transcribe call overlaps;
+  #                       # post-processing / summarization stay sequential.
   # engines:
   #   - name: whisperx
   #     url: http://localhost:9000

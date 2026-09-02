@@ -90,6 +90,9 @@ transcription:
   timeout: 3600                     # HTTP timeout in seconds (whisperx large on CPU is slow)
   speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""               # Hint text passed to the model
+  concurrency: 2                     # EPIC-056 — whisperx and gigaam are separate services;
+                                     # transcribe both at once (only the /asr call overlaps —
+                                     # post-processing / summarization stay sequential)
   engines:
     - name: whisperx
       # localhost stalls multipart uploads on Windows (IPv6 ::1 → Docker Desktop

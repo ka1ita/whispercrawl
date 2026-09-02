@@ -46,6 +46,8 @@ An index left at the pre-EPIC-043 location (`<watch_dir>/.whispercrawl/state.db`
 
 Every run has at least one ASR engine (`config.transcription.engines`, always a non-empty list — a lone `transcription:` block becomes the single engine with `name == ""`). Multiple engines get their own `asr_results` rows and `step:<engine>` tokens; see [EPIC-048](../../epics/EPIC-048-multiple-asr-engines.md). The dev stack ships this configured: `deploy/dev/docker-compose.dev.yml` runs two `whisper-asr-webservice` containers — `whisper` on host port 9000 and `whisper2` on 9001 — and mounts `deploy/dev/config.yaml`, whose `engines:` list points at both ([EPIC-054](../../epics/EPIC-054-dev-second-asr-engine.md)).
 
+**Concurrent transcription (EPIC-056).** `transcription.concurrency` (int, default `1`) bounds how many engines' `/asr` calls are in flight at once. Only the transcribe step is parallelised — a short-lived `ThreadPoolExecutor` runs the blocking HTTP calls; the worker returns a plain result and the main thread applies every `asr_results` / `errors` / status write, so the SQLite index is never touched off the main thread. Post-processing, summarization, and the per-directory pass stay sequential (Ollama serves one model at a time). `concurrency: 1`, a single engine, or `--refresh` takes the sequential path with no pool. In `per_file` mode a file's engines overlap; in `per_step` mode one pool bounds all `(file, engine)` `/asr` calls across the transcribe phase. Output is identical to a sequential run — only wall-clock differs. See [ADR-010](decisions/ADR-010-concurrent-transcription.md).
+
 ### Processing mode (`processing_mode`)
 
 Controls the order the per-file pipeline steps run in across a batch:
@@ -94,7 +96,7 @@ Key sub-configs:
 
 | Dataclass | Purpose |
 |---|---|
-| `TranscriptionConfig` | whisper-asr-webservice connection and ASR options; `name` + `engines` list for multi-engine (EPIC-048) |
+| `TranscriptionConfig` | whisper-asr-webservice connection and ASR options; `name` + `engines` list for multi-engine (EPIC-048); `concurrency` bounds parallel `/asr` calls (EPIC-056) |
 | `OllamaStepConfig` | Ollama connection, model, prompt — shared by postprocessing, file_summarization, dir_summarization |
 | `FormatterConfig` | Output format (`txt`/`html`/`md`), `enabled` flag, speaker label style |
 | `ResultConfig` | Consolidated-result assembly: section order/headings, heading level, separator (`result:`) |

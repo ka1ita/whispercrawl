@@ -43,6 +43,12 @@ class TranscriptionConfig:
     name: str = ""
     engines: List["TranscriptionConfig"] = field(default_factory=list)
 
+    # EPIC-056 — how many engines' /asr calls may be in flight at once.
+    # 1 = today's sequential behaviour (no thread pool). Top-level block only;
+    # not inherited by per-engine entries. Only the transcribe HTTP call runs in
+    # parallel — every downstream step stays sequential.
+    concurrency: int = 1
+
 
 _ENGINE_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -150,7 +156,7 @@ class Config:
         # a copy goes in the list so iterating `transcription.engines` is the one
         # way to reach the engine set. See load_config for the multi-engine path.
         if not self.transcription.engines:
-            self.transcription.engines = [replace(self.transcription, engines=[])]
+            self.transcription.engines = [replace(self.transcription, engines=[], concurrency=1)]
 
 
 def _build(cls, d: dict):
@@ -225,12 +231,17 @@ def load_config(path: Path) -> Config:
     tr_raw = dict(raw.get("transcription", {}) or {})
     engine_entries = tr_raw.pop("engines", None) or []
     transcription_cfg = _build(TranscriptionConfig, tr_raw)
+    if transcription_cfg.concurrency < 1:
+        raise ValueError(
+            f"transcription.concurrency must be >= 1, got {transcription_cfg.concurrency!r}"
+        )
     if engine_entries:
         # Each entry inherits the top-level block and overrides what it names.
         resolved = []
         for entry in engine_entries:
             merged = {**tr_raw, **(entry or {})}
             merged.pop("engines", None)
+            merged.pop("concurrency", None)  # run-level knob, not per-engine
             resolved.append(_build(TranscriptionConfig, merged))
         names = [e.name for e in resolved]
         for n in names:

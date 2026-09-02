@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, Any, Optional
@@ -21,11 +22,17 @@ def _truncate(value: Optional[str], limit: Optional[int]) -> Optional[str]:
 
 
 class ServiceLogger:
-    """Logs each outbound HTTP call to whisper/ollama as a structured ndjson entry."""
+    """Logs each outbound HTTP call to whisper/ollama as a structured ndjson entry.
+
+    ``log()`` is safe to call from multiple threads at once (EPIC-056 runs
+    engines' ``/asr`` calls concurrently): a lock serialises the ndjson write so
+    entries never interleave.
+    """
 
     def __init__(self, config: LoggingConfig, watch_dir: Optional[Path] = None) -> None:
         self.config = config
         self._fh: Optional[IO[str]] = None
+        self._lock = threading.Lock()
 
         if not config.requests:
             return
@@ -84,10 +91,12 @@ class ServiceLogger:
         if response_body is not None:
             entry["response_body"] = _truncate(response_body, limit)
 
-        logger.info("service_call %s", json.dumps(entry))
+        line = json.dumps(entry)
+        logger.info("service_call %s", line)
         if self._fh:
-            self._fh.write(json.dumps(entry) + "\n")
-            self._fh.flush()
+            with self._lock:
+                self._fh.write(line + "\n")
+                self._fh.flush()
 
     def close(self) -> None:
         if self._fh:
