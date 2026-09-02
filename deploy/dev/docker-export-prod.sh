@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# docker-build-prod.sh — build whispercrawl image, pull dependency images, and export.
+# docker-export-prod.sh — build whispercrawl image, pull dependency images, and export.
 # Run from the repository root:
-#   bash deploy/dev/docker-build-prod.sh
+#   bash deploy/dev/docker-export-prod.sh
 #
 # Output:
 #   deploy/prod/dist/whispercrawl.tar          (whispercrawl only)

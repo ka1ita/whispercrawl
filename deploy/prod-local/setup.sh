@@ -40,7 +40,7 @@ echo "==> Loading Docker images from dist/ ..."
 for TAR in whispercrawl.tar asr-webservice.tar ollama.tar; do
   if [[ ! -f "dist/$TAR" ]]; then
     echo "ERROR: dist/$TAR not found." >&2
-    echo "       Run docker-build-prod.sh on the build host and transfer the full deploy/prod-local/ directory." >&2
+    echo "       Run docker-export-prod.sh on the build host and transfer the full deploy/prod-local/ directory." >&2
     exit 1
   fi
   echo "    Loading $TAR ..."

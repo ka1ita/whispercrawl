@@ -11,7 +11,7 @@ This bundle runs **whisper-asr-webservice**, **ollama**, and **whispercrawl** on
 On the **build host** (internet-connected), from the repository root:
 
 ```bash
-bash deploy/dev/docker-build-prod.sh
+bash deploy/dev/docker-export-prod.sh
 ```
 
 This builds `whispercrawl:latest`, then pulls and exports all three images into both `deploy/prod/dist/` and `deploy/prod-local/dist/`:

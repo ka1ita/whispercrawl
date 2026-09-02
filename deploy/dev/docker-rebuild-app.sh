@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild the WhisperCrawl Docker image and restart its container.
+# Rebuild the WhisperCrawl app image and restart its container.
 # Run after changing src/ or pyproject.toml.
 set -euo pipefail
 
