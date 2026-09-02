@@ -418,22 +418,17 @@ class TestNullState:
 
 
 class TestOpenState:
-    def test_disabled_returns_nullstate(self, tmp_path: Path):
-        st = open_state(False, None, tmp_path)
-        assert isinstance(st, NullState)
-        assert not (tmp_path / "db").exists()
-
-    def test_enabled_default_path(self, tmp_path: Path):
-        st = open_state(True, None, tmp_path)
+    def test_default_path(self, tmp_path: Path):
+        st = open_state(None, tmp_path)
         try:
             assert isinstance(st, ProcessingState)
         finally:
             st.close()
         assert (tmp_path / "db" / "state.db").exists()
 
-    def test_enabled_explicit_path(self, tmp_path: Path):
+    def test_explicit_path(self, tmp_path: Path):
         target = tmp_path / "custom" / "idx.db"
-        st = open_state(True, str(target), tmp_path)
+        st = open_state(str(target), tmp_path)
         st.close()
         assert target.exists()
 
@@ -457,7 +452,7 @@ class TestLegacyIndexMigration:
         watch_dir.mkdir()
         legacy = self._seed_legacy(watch_dir)
 
-        st = open_state(True, None, config_root, watch_dir=watch_dir)
+        st = open_state(None, config_root, watch_dir=watch_dir)
         try:
             assert st.is_current("a/b.mp3", 123.0, 456)
         finally:
@@ -489,14 +484,14 @@ class TestLegacyIndexMigration:
 
         target = tmp_path / "db" / "state.db"
         ProcessingState.open(target).close()  # new path already populated
-        open_state(True, str(target), tmp_path, watch_dir=watch_dir).close()  # migration must be skipped
+        open_state(str(target), tmp_path, watch_dir=watch_dir).close()  # migration must be skipped
 
         assert legacy.exists()  # left untouched
 
     def test_no_legacy_no_error(self, tmp_path: Path):
         watch_dir = tmp_path / "audio"
         watch_dir.mkdir()
-        st = open_state(True, None, tmp_path, watch_dir=watch_dir)
+        st = open_state(None, tmp_path, watch_dir=watch_dir)
         st.close()
         assert (tmp_path / "db" / "state.db").exists()
 
@@ -511,7 +506,7 @@ class TestLegacyIndexMigration:
             raise OSError("cannot move")
 
         monkeypatch.setattr(state_mod.shutil, "move", boom)
-        st = open_state(True, None, tmp_path, watch_dir=watch_dir)
+        st = open_state(None, tmp_path, watch_dir=watch_dir)
         try:
             assert st.lookup("a/b.mp3") is None  # fresh index
         finally:

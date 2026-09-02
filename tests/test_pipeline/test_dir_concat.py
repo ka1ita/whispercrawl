@@ -45,17 +45,16 @@ def _config(
         extensions=[".mp3"],
         rescan=True,
         formatter=FormatterConfig(format=fmt),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(
             llm_enabled=llm_enabled,
             concat_source=concat_source,
             underscore_prefix=underscore_prefix,
-            error_suffix="_err",
         ),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

@@ -26,18 +26,17 @@ def _config(tmp_path: Path, replace_transcription: bool = False) -> Config:
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=True,
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(
             llm_enabled=True,
             regex_enabled=False,
             output_suffix="_fix",
-            error_suffix="_err",
             replace_transcription=replace_transcription,
         ),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

@@ -46,6 +46,9 @@ sidecar. `whispercrawl --errors` reads them back.
   as before — the index is the only place errors can go, so with no index the
   fallback must stay or a failure is lost. The `error_suffix` config fields
   remain for this path and for `--cleanup`'s legacy sweep.
+  *(Superseded by [ADR-006](ADR-006-index-always-on.md): the index is now
+  mandatory, so this fallback, the `error_suffix` fields, and the legacy sweep
+  were all removed.)*
 
 ## Alternatives considered
 

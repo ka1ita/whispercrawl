@@ -43,16 +43,16 @@ def _config(
         rescan=rescan,
         processing_mode=processing_mode,
         max_files_per_run=max_files,
-        state=StateConfig(enabled=True),
+        state=StateConfig(),
         formatter=FormatterConfig(format="txt"),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(
             llm_enabled=True, regex_enabled=False, output_suffix="_fix"
         ),
         file_summarization=OllamaStepConfig(llm_enabled=True, output_suffix="_sum"),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 

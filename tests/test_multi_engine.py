@@ -22,21 +22,21 @@ from whispercrawl.state import ProcessingState
 
 def _config(tmp_path: Path, engine_names, *, fmt="txt", mode="per_file",
             pp=False, filesum=False, dirsum=False, rescan=True) -> Config:
-    base = TranscriptionConfig(output_suffix="", error_suffix="_err", diarize=False)
+    base = TranscriptionConfig(output_suffix="", diarize=False)
     base.engines = [TranscriptionConfig(name=n, diarize=False) for n in engine_names] if engine_names else []
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=rescan,
         processing_mode=mode,
-        state=StateConfig(enabled=True, store_text=True),
+        state=StateConfig(),
         formatter=FormatterConfig(format=fmt),
         transcription=base,
         postprocessing=OllamaStepConfig(llm_enabled=pp, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=filesum),
-        dir_summarization=DirSummarizationConfig(llm_enabled=dirsum, error_suffix="_err"),
+        dir_summarization=DirSummarizationConfig(llm_enabled=dirsum),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -179,7 +179,7 @@ class TestCleanupPerEngine:
             run_pipeline(cfg)
         assert (tmp_path / "rec_a.txt").exists()
 
-        cfg.cleanup = CleanupConfig(targets=[""], on="success")
+        cfg.cleanup = CleanupConfig(on="success")
         run_cleanup(cfg)
 
         assert not (tmp_path / "rec_a.txt").exists()

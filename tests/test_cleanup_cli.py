@@ -1,22 +1,30 @@
-﻿"""Tests for --cleanup CLI action (run_cleanup)."""
+"""Tests for --cleanup CLI action (run_cleanup) — current-version outputs only (EPIC-052)."""
 from pathlib import Path
 
-import pytest
-
-from whispercrawl.config import CleanupConfig, Config, FormatterConfig, ScheduleConfig, TranscriptionConfig, OllamaStepConfig, LoggingConfig
+from whispercrawl.config import (
+    CleanupConfig,
+    Config,
+    DirSummarizationConfig,
+    FormatterConfig,
+    LoggingConfig,
+    TranscriptionConfig,
+)
 from whispercrawl.main import run_cleanup
 
 EXTENSIONS = [".mp3", ".ogg", ".wav"]
 
 
-def _config(watch_dir: Path, targets=None, fmt: str = "txt") -> Config:
-    if targets is None:
-        targets = ["", "_fix", "_sum"]
+def _config(watch_dir: Path, fmt: str = "txt", engine_names=None) -> Config:
+    tr = TranscriptionConfig(output_suffix="")
+    if engine_names:
+        tr.engines = [TranscriptionConfig(name=n) for n in engine_names]
     return Config(
         watch_dir=watch_dir,
         extensions=EXTENSIONS,
         formatter=FormatterConfig(format=fmt),
-        cleanup=CleanupConfig(targets=targets, on="success"),
+        transcription=tr,
+        dir_summarization=DirSummarizationConfig(underscore_prefix=True),
+        cleanup=CleanupConfig(on="success"),
         logging=LoggingConfig(),
     )
 
@@ -26,193 +34,131 @@ def _touch(path: Path, text: str = "x") -> Path:
     return path
 
 
-class TestSweepsLegacySidecars:
-    """EPIC-047: default cleanup.targets include the pre-047 sidecar labels."""
+class TestRemovesConsolidatedResults:
+    def test_removes_per_file_result(self, tmp_path):
+        audio = tmp_path / "call.mp3"
+        audio.touch()
+        result = _touch(tmp_path / "call.txt")
 
-    def test_default_targets_remove_fix_sum_all_concat(self, tmp_path):
+        run_cleanup(_config(tmp_path))
+
+        assert not result.exists()
+        assert audio.exists()
+
+    def test_removes_per_directory_result(self, tmp_path):
+        (tmp_path / "rec.ogg").touch()
+        dir_result = _touch(tmp_path / ("_" + tmp_path.name + ".txt"))
+
+        run_cleanup(_config(tmp_path))
+
+        assert not dir_result.exists()
+
+    def test_removes_result_in_any_formatter_extension(self, tmp_path):
         (tmp_path / "call.mp3").touch()
-        legacy = [
-            _touch(tmp_path / "call.txt"),
-            _touch(tmp_path / "call_fix.txt"),
-            _touch(tmp_path / "call_sum.txt"),
-            _touch(tmp_path / (tmp_path.name + "_all.txt")),
-            _touch(tmp_path / (tmp_path.name + "_concat.txt")),
-        ]
-        cfg = Config(
-            watch_dir=tmp_path,
-            extensions=EXTENSIONS,
-            formatter=FormatterConfig(format="txt"),
-            cleanup=CleanupConfig(on="success"),  # default targets
-            logging=LoggingConfig(),
-        )
-        run_cleanup(cfg)
-        for p in legacy:
-            assert not p.exists()
-
-
-class TestRunCleanupDeletes:
-    def test_removes_output_files(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
         txt = _touch(tmp_path / "call.txt")
-        fix = _touch(tmp_path / "call_fix.txt")
-        summ = _touch(tmp_path / "call_sum.txt")
+        md = _touch(tmp_path / "call.md")
+        html = _touch(tmp_path / "call.html")
 
-        run_cleanup(_config(tmp_path))
+        run_cleanup(_config(tmp_path, fmt="md"))
 
         assert not txt.exists()
-        assert not fix.exists()
-        assert not summ.exists()
-        assert audio.exists()  # source file untouched
+        assert not md.exists()
+        assert not html.exists()
 
-    def test_removes_dir_summary(self, tmp_path):
-        audio = tmp_path / "rec.ogg"
-        audio.touch()
-        dir_sum = _touch(tmp_path / (tmp_path.name + "_sum.txt"))
+    def test_removes_every_engine_result(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        a = _touch(tmp_path / "call_whisperx.txt")
+        b = _touch(tmp_path / "call_faster.txt")
+        dir_a = _touch(tmp_path / ("_" + tmp_path.name + "_whisperx.txt"))
 
-        run_cleanup(_config(tmp_path))
+        run_cleanup(_config(tmp_path, engine_names=["whisperx", "faster"]))
 
-        assert not dir_sum.exists()
-
-    def test_only_removes_configured_targets(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        txt = _touch(tmp_path / "call.txt")
-        fix = _touch(tmp_path / "call_fix.txt")
-
-        run_cleanup(_config(tmp_path, targets=[""]))
-
-        assert not txt.exists()
-        assert fix.exists()  # not in targets
+        assert not a.exists()
+        assert not b.exists()
+        assert not dir_a.exists()
 
     def test_recursive_subdirectory(self, tmp_path):
         sub = tmp_path / "sub"
         sub.mkdir()
-        audio = sub / "meeting.mp3"
-        audio.touch()
-        txt = _touch(sub / "meeting.txt")
+        (sub / "meeting.mp3").touch()
+        result = _touch(sub / "meeting.txt")
 
         run_cleanup(_config(tmp_path))
 
-        assert not txt.exists()
+        assert not result.exists()
 
 
-class TestRunCleanupDryRun:
-    def test_dry_run_keeps_files(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        txt = _touch(tmp_path / "call.txt")
-
-        run_cleanup(_config(tmp_path), dry_run=True)
-
-        assert txt.exists()
-
-    def test_dry_run_dir_summary_kept(self, tmp_path):
-        audio = tmp_path / "rec.ogg"
-        audio.touch()
-        dir_sum = _touch(tmp_path / (tmp_path.name + "_sum.txt"))
-
-        run_cleanup(_config(tmp_path), dry_run=True)
-
-        assert dir_sum.exists()
-
-
-class TestRunCleanupErrFiles:
-    def test_removes_err_files(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        err = _touch(tmp_path / "call_err.txt")
+class TestLeavesLegacyAndSidecarsAlone:
+    def test_pre047_sidecars_untouched(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        result = _touch(tmp_path / "call.txt")
+        fix = _touch(tmp_path / "call_fix.txt")
+        summ = _touch(tmp_path / "call_sum.txt")
+        concat = _touch(tmp_path / (tmp_path.name + "_concat.txt"))
 
         run_cleanup(_config(tmp_path))
 
-        assert not err.exists()
+        assert not result.exists()
+        assert fix.exists()
+        assert summ.exists()
+        assert concat.exists()
 
-    def test_removes_err_file_without_media_sibling(self, tmp_path):
-        # orphan _err.txt with no matching media file should still be removed
-        err = _touch(tmp_path / "orphan_err.txt")
-        audio = tmp_path / "call.mp3"  # keep at least one media file so rglob has something
-        audio.touch()
-
-        run_cleanup(_config(tmp_path))
-
-        assert not err.exists()
-
-    def test_removes_err_files_recursively(self, tmp_path):
-        sub = tmp_path / "sub"
-        sub.mkdir()
-        (sub / "rec.wav").touch()
-        err = _touch(sub / "rec_err.txt")
-
-        run_cleanup(_config(tmp_path))
-
-        assert not err.exists()
-
-    def test_dry_run_keeps_err_files(self, tmp_path):
+    def test_err_files_untouched(self, tmp_path):
         (tmp_path / "call.mp3").touch()
         err = _touch(tmp_path / "call_err.txt")
+        orphan = _touch(tmp_path / "orphan_err.txt")
 
-        run_cleanup(_config(tmp_path), dry_run=True)
+        run_cleanup(_config(tmp_path))
 
         assert err.exists()
+        assert orphan.exists()
 
-    def test_removes_legacy_sidecar_and_clears_error_rows(self, tmp_path):
-        """EPIC-049: --cleanup sweeps a pre-049 _err.txt and empties the index errors table."""
+    def test_diarize_json_untouched(self, tmp_path):
+        (tmp_path / "call.mp3").touch()
+        diarize = _touch(tmp_path / "call_diarize.json")
+
+        run_cleanup(_config(tmp_path))
+
+        assert diarize.exists()
+
+
+class TestClearsIndex:
+    def test_empties_the_processing_index(self, tmp_path):
         from whispercrawl.state import ProcessingState
 
         (tmp_path / "call.mp3").touch()
-        legacy = _touch(tmp_path / "call_err.txt")
         db = tmp_path / "db" / "state.db"
         with ProcessingState.open(db) as st:
+            st.mark("call.mp3", "done", 1.0, 1)
             st.record_error("call.mp3", "transcribe", "boom")
 
         run_cleanup(_config(tmp_path))
 
-        assert not legacy.exists()
         with ProcessingState.open(db) as st:
             assert st.get_errors() == []
+            assert st.lookup("call.mp3") is None
 
 
-class TestRunCleanupMdFormat:
-    def test_removes_md_output_files(self, tmp_path):
+class TestDryRun:
+    def test_dry_run_keeps_everything(self, tmp_path):
+        from whispercrawl.state import ProcessingState
+
         (tmp_path / "call.mp3").touch()
-        md = _touch(tmp_path / "call.md")
-        fix = _touch(tmp_path / "call_fix.md")
+        result = _touch(tmp_path / "call.txt")
+        db = tmp_path / "db" / "state.db"
+        with ProcessingState.open(db) as st:
+            st.mark("call.mp3", "done", 1.0, 1)
 
-        run_cleanup(_config(tmp_path, fmt="md"))
+        run_cleanup(_config(tmp_path), dry_run=True)
 
-        assert not md.exists()
-        assert not fix.exists()
-
-    def test_md_cleanup_does_not_touch_txt_files(self, tmp_path):
-        (tmp_path / "call.mp3").touch()
-        txt = _touch(tmp_path / "call.txt")
-
-        run_cleanup(_config(tmp_path, fmt="md"))
-
-        assert txt.exists()
-
-    def test_removes_md_dir_summary(self, tmp_path):
-        (tmp_path / "rec.ogg").touch()
-        dir_sum = _touch(tmp_path / (tmp_path.name + "_sum.md"))
-
-        run_cleanup(_config(tmp_path, fmt="md"))
-
-        assert not dir_sum.exists()
-
-    def test_md_err_files_still_removed(self, tmp_path):
-        (tmp_path / "call.mp3").touch()
-        err = _touch(tmp_path / "call_err.txt")
-
-        run_cleanup(_config(tmp_path, fmt="md"))
-
-        assert not err.exists()
+        assert result.exists()
+        with ProcessingState.open(db) as st:
+            assert st.lookup("call.mp3") is not None
 
 
-class TestRunCleanupNoOutputs:
+class TestNoOutputs:
     def test_no_outputs_exits_cleanly(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        # no .txt or other output files — should not raise
+        (tmp_path / "call.mp3").touch()
         run_cleanup(_config(tmp_path))
 
     def test_empty_dir_exits_cleanly(self, tmp_path):

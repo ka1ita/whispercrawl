@@ -20,19 +20,19 @@ from whispercrawl.config import (
 from whispercrawl.main import run_pipeline
 
 
-def _config(tmp_path: Path, *, fmt: str = "txt", state_enabled: bool = True, store_text: bool = True) -> Config:
+def _config(tmp_path: Path, *, fmt: str = "txt") -> Config:
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=False,
-        state=StateConfig(enabled=state_enabled, store_text=store_text),
+        state=StateConfig(),
         formatter=FormatterConfig(format=fmt),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=True),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -117,15 +117,15 @@ def test_normal_run_after_refresh_skips_the_file(tmp_path: Path):
     assert later_calls == []
 
 
-def test_refresh_requires_state_and_store_text(tmp_path: Path, caplog):
+def test_refresh_with_no_stored_text_skips_file(tmp_path: Path):
+    """The index is always on; a file with no stored transcript is simply skipped."""
     (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
     with patch(
         "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
-        run_pipeline(_config(tmp_path, state_enabled=False), refresh=True)
-        run_pipeline(_config(tmp_path, store_text=False), refresh=True)
+        run_pipeline(_config(tmp_path), refresh=True)
 
     assert not (tmp_path / "rec.txt").exists()
 

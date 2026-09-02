@@ -14,13 +14,13 @@ from whispercrawl.main import run_errors
 from whispercrawl.state import ProcessingState
 
 
-def _config(tmp_path: Path, *, state_enabled: bool = True) -> Config:
+def _config(tmp_path: Path) -> Config:
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
-        state=StateConfig(enabled=state_enabled),
+        state=StateConfig(),
         formatter=FormatterConfig(format="txt"),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         logging=LoggingConfig(),
     )
 
@@ -32,12 +32,6 @@ def test_clean_index_exits_zero(tmp_path, capsys):
 
 def test_no_index_exits_zero(tmp_path):
     assert run_errors(_config(tmp_path)) == 0
-
-
-def test_disabled_state_notes_and_exits_zero(tmp_path, caplog):
-    with caplog.at_level("INFO"):
-        assert run_errors(_config(tmp_path, state_enabled=False)) == 0
-    assert "disabled" in caplog.text.lower()
 
 
 def test_outstanding_errors_listed_and_exit_nonzero(tmp_path, capsys):

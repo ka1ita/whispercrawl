@@ -80,9 +80,10 @@ bash service-down.sh
 
 ## 6. Cleanup output files
 
-Each processed file now leaves one result (`<file>.<ext>`) and each directory one
-(`_<dirname>.<ext>`). Cleanup removes those plus any pre-EPIC-047 sidecars
-(`_fix` / `_sum` / `_all` / `_concat`), without touching source audio:
+Each processed file leaves one result (`<file>.<ext>`) and each directory one
+(`_<dirname>.<ext>`, one set per ASR engine). Cleanup removes those (in any
+formatter extension) and empties the processing index, without touching source
+audio:
 
 ```bash
 bash service-cleanup.sh
@@ -91,9 +92,12 @@ bash service-cleanup.sh
 bash service-cleanup.sh --dry-run
 ```
 
-**Upgrading a catalog produced before EPIC-047:** run `service-cleanup.sh` once to
-sweep the old scattered files, then re-run the pipeline with `--refresh` (or
-`rescan: true`) to regenerate results in the single-file form.
+**Upgrading a catalog produced before EPIC-047/049:** `--cleanup` no longer
+sweeps the old scattered `_fix` / `_sum` / `_all` / `_concat` / `_err.txt`
+files — remove them by hand once, e.g.
+`find /path/to/audio \( -name '*_fix.*' -o -name '*_sum.*' -o -name '*_all.*' -o -name '*_concat.*' -o -name '*_err.txt' \) -delete`,
+then re-run with `--refresh` (or `rescan: true`) to regenerate results in the
+single-file form.
 
 ---
 
@@ -142,10 +146,11 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
 - **Backups:** either include `db/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
 - **Upgrading from an older release:** an existing `audio/.whispercrawl/state.db` is moved into
   `db/` automatically on the first run (best-effort; a failure just starts a fresh index).
-- Disable with `state.enabled: false` in `config.yaml`. Set `max_files_per_run` to cap how many
-  files each run processes when first draining a large backlog.
-- **Stored transcript text.** With `state.store_text: true` (default) the index also keeps each
-  file's raw ASR transcript and post-processed text. This makes the DB larger but enables:
+- **Always on.** The index cannot be disabled; `state.path` in `config.yaml` only overrides its
+  location. Set `max_files_per_run` to cap how many files each run processes when first draining a
+  large backlog.
+- **Stored transcript text.** The index also keeps each file's raw ASR transcript and
+  post-processed text. This makes the DB larger but enables:
 
   ```bash
   docker compose -f docker-compose.prod.yml run --rm whispercrawl --refresh
@@ -154,10 +159,9 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
   file from the stored transcript, with the current `config.yaml`, and **without a single whisper
   call** — the fast way to apply a new fix prompt, summary model, or output format. A file whose
-  source changed, or that has no stored transcript, is skipped. Needs
-  `state.enabled: true` and `state.store_text: true`; changing `transcription:` settings still
-  requires `rescan: true`.
-- **Checking for failures.** A failing step no longer writes a `<file>_err.txt` beside the audio —
+  source changed, or that has no stored transcript, is skipped. Changing `transcription:` settings
+  still requires `rescan: true`.
+- **Checking for failures.** A failing step never writes a `<file>_err.txt` beside the audio —
   it records the error in the index. List outstanding failures with:
 
   ```bash
@@ -166,9 +170,8 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
 
   It prints each failure grouped by path and **exits non-zero** when any are outstanding (zero when
   the index is clean) — suitable for a cron/monitoring wrapper. A failure clears itself once that
-  file / directory next completes successfully. On upgrade from a pre-EPIC-049 build, run
-  `--once --cleanup` (or `--errors` first to review) to sweep the leftover `_err.txt` files. With
-  `state.enabled: false` the `<file>_err.txt` sidecar behavior is unchanged.
+  file / directory next completes successfully. Leftover `_err.txt` files from a pre-EPIC-049 build
+  are removed by hand (see §6).
 
 ---
 

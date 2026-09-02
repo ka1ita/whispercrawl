@@ -29,21 +29,20 @@ def _config(
     *,
     rescan: bool = False,
     max_files: int | None = None,
-    state_enabled: bool = True,
 ) -> Config:
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=rescan,
         max_files_per_run=max_files,
-        state=StateConfig(enabled=state_enabled),
+        state=StateConfig(),
         formatter=FormatterConfig(format="txt"),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -137,7 +136,6 @@ class TestCleanupClearsIndex:
         assert len(_transcripts(tmp_path)) == 2
 
         cfg = _config(tmp_path)
-        cfg.cleanup = CleanupConfig(targets=["", "_concat"])
         run_cleanup(cfg)
         assert list(tmp_path.glob("*.txt")) == []
         # the state.db file may remain on disk; its rows must have been cleared
@@ -281,19 +279,18 @@ class TestStepResume:
         assert transcribe_calls == ["a.mp3", "a.mp3"]  # re-transcribed, not resumed
 
 
-class TestStateDisabled:
-    def test_disabled_creates_no_db_and_still_skips_via_outputs(self, tmp_path: Path):
+class TestStateAlwaysOn:
+    def test_index_created_and_second_run_skips(self, tmp_path: Path):
         _make_files(tmp_path, ["a.mp3", "b.mp3"])
-        first = _run(_config(tmp_path, state_enabled=False))
+        first = _run(_config(tmp_path))
         assert sorted(first) == ["a.mp3", "b.mp3"]
-        assert not (tmp_path / ".whispercrawl").exists()
+        assert (tmp_path / "db" / "state.db").exists()
 
-        # second run: outputs exist → skipped by the output-existence check
-        second = _run(_config(tmp_path, state_enabled=False))
+        second = _run(_config(tmp_path))
         assert second == []
 
     def test_dry_run_creates_no_db(self, tmp_path: Path):
         _make_files(tmp_path, ["a.mp3"])
         with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "t"):
             run_pipeline(_config(tmp_path), dry_run=True)
-        assert not (tmp_path / ".whispercrawl").exists()
+        assert not (tmp_path / "db").exists()

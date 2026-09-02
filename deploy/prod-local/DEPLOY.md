@@ -132,8 +132,9 @@ bash service-down.sh
 ## 9. Cleanup output files
 
 Each processed file leaves one result (`<file>.<ext>`) and each directory one
-(`_<dirname>.<ext>`). Cleanup removes those plus any pre-EPIC-047 sidecars
-(`_fix` / `_sum` / `_all` / `_concat`), without touching source audio:
+(`_<dirname>.<ext>`, one set per ASR engine). Cleanup removes those (in any
+formatter extension) and empties the processing index, without touching source
+audio:
 
 ```bash
 docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup
@@ -142,8 +143,11 @@ docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --c
 docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup --dry-run
 ```
 
-**Upgrading a pre-EPIC-047 catalog:** run the cleanup once, then re-run with
-`--refresh` (or `rescan: true`) to regenerate results in the single-file form.
+**Upgrading a pre-EPIC-047/049 catalog:** `--cleanup` no longer sweeps the old
+`_fix` / `_sum` / `_all` / `_concat` / `_err.txt` files — delete them by hand
+once (`find /path/to/audio \( -name '*_fix.*' -o -name '*_sum.*' -o -name '*_all.*' -o -name '*_concat.*' -o -name '*_err.txt' \) -delete`),
+then re-run with `--refresh` (or `rescan: true`) to regenerate results in the
+single-file form.
 
 ---
 
@@ -192,10 +196,11 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
 - **Backups:** either include `db/` or deliberately exclude it; losing it only costs one slower "rediscovery" run.
 - **Upgrading from an older release:** an existing `audio/.whispercrawl/state.db` is moved into
   `db/` automatically on the first run (best-effort; a failure just starts a fresh index).
-- Disable with `state.enabled: false` in `config.yaml`. Set `max_files_per_run` to cap how many
-  files each run processes when first draining a large backlog.
-- **Stored transcript text.** With `state.store_text: true` (default) the index also keeps each
-  file's raw ASR transcript and post-processed text, enabling:
+- **Always on.** The index cannot be disabled; `state.path` in `config.yaml` only overrides its
+  location. Set `max_files_per_run` to cap how many files each run processes when first draining a
+  large backlog.
+- **Stored transcript text.** The index also keeps each file's raw ASR transcript and
+  post-processed text, enabling:
 
   ```bash
   docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --refresh
@@ -204,9 +209,8 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
   file from the stored transcript, with the current `config.yaml`, and **without a single whisper
   call** — the fast way to apply a new fix prompt, summary model, or output format. A file whose
-  source changed, or that has no stored transcript, is skipped. Needs
-  `state.enabled: true` and `state.store_text: true`; changing `transcription:` settings still
-  requires `rescan: true`.
+  source changed, or that has no stored transcript, is skipped. Changing `transcription:` settings
+  still requires `rescan: true`.
 - **Checking for failures.** A failing step records the error in the index instead of writing a
   `<file>_err.txt` beside the audio. List outstanding failures with:
 
@@ -215,9 +219,8 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   ```
 
   It prints each failure grouped by path and **exits non-zero** when any are outstanding — suitable
-  for a monitoring wrapper. A failure clears itself once that file / directory next succeeds. On
-  upgrade from a pre-EPIC-049 build, `--once --cleanup` sweeps the leftover `_err.txt` files. With
-  `state.enabled: false` the `<file>_err.txt` sidecar behavior is unchanged.
+  for a monitoring wrapper. A failure clears itself once that file / directory next succeeds.
+  Leftover `_err.txt` files from a pre-EPIC-049 build are removed by hand (see §9).
 
 ---
 

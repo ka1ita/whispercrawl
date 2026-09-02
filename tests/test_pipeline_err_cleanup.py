@@ -41,19 +41,18 @@ def _config(
     postprocessing=False,
     file_summarization=False,
     dir_summarization=False,
-    state_enabled=True,
 ) -> Config:
     return Config(
         watch_dir=tmp_path,
         extensions=[".mp3"],
         rescan=True,
-        state=StateConfig(enabled=state_enabled),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        state=StateConfig(),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=postprocessing, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=file_summarization, output_suffix="_sum"),
         dir_summarization=DirSummarizationConfig(llm_enabled=dir_summarization, output_suffix="_sum"),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -144,21 +143,6 @@ class TestPerFileErrors:
         assert _errors(tmp_path, "meeting.mp3") == []
         assert (tmp_path / "meeting.txt").exists()
 
-    def test_disabled_index_falls_back_to_sidecar(self, tmp_path):
-        from whispercrawl.pipeline.postprocessor import PostProcessingError
-
-        (tmp_path / "meeting.mp3").touch()
-
-        with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch(
-                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
-                side_effect=PostProcessingError("boom"),
-            ),
-        ):
-            run_pipeline(_config(tmp_path, postprocessing=True, state_enabled=False))
-
-        assert (tmp_path / "meeting_err.txt").exists()
 
 
 class TestDirErrors:

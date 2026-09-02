@@ -1,96 +1,86 @@
-﻿"""Tests for pipeline Cleaner."""
+"""Tests for pipeline Cleaner — removes only the consolidated result (EPIC-052)."""
 from pathlib import Path
-
-import pytest
 
 from whispercrawl.config import CleanupConfig
 from whispercrawl.pipeline.cleaner import Cleaner
 
-DEFAULT_SUFFIXES = ["", "_fix", "_sum"]
 
-
-def _make_outputs(audio: Path, suffixes=DEFAULT_SUFFIXES, ext=".txt") -> list[Path]:
-    files = [audio.with_name(audio.stem + s + ext) for s in suffixes]
-    for f in files:
-        f.write_text("content")
-    return files
+def _result(audio: Path, ext=".txt", label="") -> Path:
+    p = audio.with_name(audio.stem + label + ext)
+    p.write_text("content")
+    return p
 
 
 class TestCleanerOnSuccess:
-    def test_removes_all_targets_on_success(self, tmp_path):
+    def test_removes_result_on_success(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        outputs = _make_outputs(audio)
+        result = _result(audio)
 
         Cleaner(CleanupConfig(on="success")).clean(audio, success=True)
 
-        assert not any(f.exists() for f in outputs)
+        assert not result.exists()
 
-    def test_keeps_files_on_failure(self, tmp_path):
+    def test_keeps_result_on_failure(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        outputs = _make_outputs(audio)
+        result = _result(audio)
 
         Cleaner(CleanupConfig(on="success")).clean(audio, success=False)
 
-        assert all(f.exists() for f in outputs)
+        assert result.exists()
 
 
 class TestCleanerOnAlways:
-    def test_removes_on_success(self, tmp_path):
-        audio = tmp_path / "call.mp3"
-        audio.touch()
-        outputs = _make_outputs(audio)
-
-        Cleaner(CleanupConfig(on="always")).clean(audio, success=True)
-
-        assert not any(f.exists() for f in outputs)
-
     def test_removes_on_failure(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        outputs = _make_outputs(audio)
+        result = _result(audio)
 
         Cleaner(CleanupConfig(on="always")).clean(audio, success=False)
 
-        assert not any(f.exists() for f in outputs)
+        assert not result.exists()
 
 
-class TestCleanerTargets:
-    def test_only_removes_listed_suffixes(self, tmp_path):
+class TestCleanerScope:
+    def test_leaves_pre047_sidecars_alone(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        txt = audio.with_name("call.txt")
+        result = _result(audio)
         fix = audio.with_name("call_fix.txt")
-        txt.write_text("t")
+        err = audio.with_name("call_err.txt")
         fix.write_text("f")
+        err.write_text("e")
 
-        Cleaner(CleanupConfig(targets=[""], on="success")).clean(audio, success=True)
+        Cleaner(CleanupConfig(on="success")).clean(audio, success=True)
 
-        assert not txt.exists()
+        assert not result.exists()
         assert fix.exists()
+        assert err.exists()
 
-    def test_missing_target_files_are_silently_skipped(self, tmp_path):
+    def test_missing_result_is_silently_skipped(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-
         Cleaner(CleanupConfig(on="always")).clean(audio, success=True)
 
-    def test_html_format_removes_html_files(self, tmp_path):
+    def test_html_format_removes_only_html_result(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        outputs = _make_outputs(audio, ext=".html")
+        html = _result(audio, ext=".html")
+        txt = _result(audio, ext=".txt")
 
         Cleaner(CleanupConfig(on="success"), output_format="html").clean(audio, success=True)
 
-        assert not any(f.exists() for f in outputs)
+        assert not html.exists()
+        assert txt.exists()
 
-    def test_html_format_does_not_remove_txt_files(self, tmp_path):
+    def test_removes_result_per_engine_label(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
-        txt = audio.with_name("call.txt")
-        txt.write_text("x")
+        a = _result(audio, label="_a")
+        b = _result(audio, label="_b")
 
-        Cleaner(CleanupConfig(targets=[""], on="success"), output_format="html").clean(audio, success=True)
+        Cleaner(CleanupConfig(on="success"), engine_labels=["_a", "_b"]).clean(audio, success=True)
 
-        assert txt.exists()
+        assert not a.exists()
+        assert not b.exists()

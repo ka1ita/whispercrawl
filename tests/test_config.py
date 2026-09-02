@@ -16,10 +16,11 @@ def _write(tmp_path: Path, body: str) -> Path:
 
 
 class TestStateConfig:
-    def test_defaults_enabled_with_resolved_path(self, tmp_path: Path):
+    def test_defaults_to_resolved_path(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, ""))
-        assert cfg.state.enabled is True
         assert cfg.state.path == str(tmp_path / "db" / "state.db")
+        assert not hasattr(cfg.state, "enabled")
+        assert not hasattr(cfg.state, "store_text")
 
     def test_default_path_anchored_at_config_dir_not_watch_dir(self, tmp_path: Path):
         cfg_dir = tmp_path / "deploy"
@@ -31,14 +32,18 @@ class TestStateConfig:
         cfg = load_config(p)
         assert cfg.state.path == str(cfg_dir / "db" / "state.db")
 
-    def test_can_disable(self, tmp_path: Path):
-        cfg = load_config(_write(tmp_path, "state:\n  enabled: false\n"))
-        assert cfg.state.enabled is False
+    def test_stale_enabled_and_store_text_ignored_with_warning(self, tmp_path: Path, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            cfg = load_config(_write(tmp_path, "state:\n  enabled: false\n  store_text: false\n"))
+        assert cfg.state.path == str(tmp_path / "db" / "state.db")
+        assert "state.enabled is deprecated" in caplog.text
+        assert "state.store_text is deprecated" in caplog.text
 
     def test_explicit_path_kept(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, "state:\n  path: /var/lib/wc/idx.db\n"))
         assert cfg.state.path == "/var/lib/wc/idx.db"
-        assert cfg.state.enabled is True
 
 
 class TestMaxFilesPerRun:
@@ -99,6 +104,20 @@ class TestResultConfig:
             "file_summarization:\n  output_suffix: _sum\n",
         ))
         assert cfg is not None
+
+    def test_cleanup_targets_and_error_suffix_ignored_with_warning(self, tmp_path: Path, caplog):
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            cfg = load_config(_write(
+                tmp_path,
+                "cleanup:\n  targets: ['', _fix]\n"
+                "transcription:\n  error_suffix: _oops\n",
+            ))
+        assert not hasattr(cfg.cleanup, "targets")
+        assert not hasattr(cfg.transcription, "error_suffix")
+        assert "cleanup.targets is deprecated" in caplog.text
+        assert "transcription.error_suffix is deprecated" in caplog.text
 
 
 class TestTranscriptionEngines:

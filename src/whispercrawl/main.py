@@ -47,23 +47,10 @@ def render_output(text: str, fmt: str) -> str:
     )
 
 
-def _write_error(file_path: Path, error_suffix: str, message: str) -> None:
-    err_path = output_path(file_path, error_suffix, "txt")
-    err_path.write_text(message, encoding="utf-8")
-
-
 def run_errors(config: Config) -> int:
     """Print failures recorded in the processing index. Returns a process exit
     code: non-zero when at least one error is outstanding, zero otherwise."""
     from whispercrawl.state import ProcessingState, default_state_path
-
-    if not config.state.enabled:
-        logger.info(
-            "Processing index disabled (state.enabled: false); failures are written "
-            "to *%s.txt sidecars beside the audio.",
-            config.transcription.error_suffix,
-        )
-        return 0
 
     state_path = config.state.path or default_state_path(config.watch_dir)
     if not Path(state_path).exists():
@@ -100,84 +87,55 @@ def run_errors(config: Config) -> int:
 
 
 def run_cleanup(config: Config, dry_run: bool = False) -> None:
-    """Delete pipeline output files under watch_dir without running the pipeline."""
-    fmt = config.formatter.format
-    targets = config.cleanup.targets
+    """Delete the consolidated result files this version writes under watch_dir,
+    and empty the processing index, without running the pipeline.
+
+    Pre-047 sidecars (``_fix`` / ``_sum`` / ``_all`` / ``_concat``) and
+    ``_err.txt`` files are left untouched — remove those by hand when upgrading
+    an old catalog (EPIC-052).
+    """
+    _result_exts = (".txt", ".md", ".html")
     elabels = [engine_label(e.name) for e in config.transcription.engines]
     removed = 0
 
-    for media_path in sorted(config.watch_dir.rglob("*")):
-        if not media_path.is_file():
-            continue
-        if media_path.suffix.lower() not in config.extensions:
-            continue
-        for label in elabels:
-            for suffix in targets:
-                out = (
-                    media_path.with_name(media_path.stem + suffix)
-                    if suffix.endswith(".json")
-                    else output_path(media_path, label + suffix, fmt)
-                )
-                if out.exists():
-                    if dry_run:
-                        logger.info("Would clean: %s", out)
-                    else:
-                        out.unlink()
-                        logger.info("Cleaned: %s", out)
-                    removed += 1
-
-    # Also remove per-directory summary files found alongside media files
-    dirs_seen: set[Path] = {
-        p.parent
-        for p in config.watch_dir.rglob("*")
-        if p.is_file() and p.suffix.lower() in config.extensions
-    }
-    dir_prefix = "_" if config.dir_summarization.underscore_prefix else ""
-    for dir_path in sorted(dirs_seen):
-        for label in elabels:
-            for suffix in targets:
-                if suffix.endswith(".json"):
-                    dir_sum = dir_path / (dir_path.name + suffix)
-                else:
-                    dir_base = dir_path / (dir_prefix + dir_path.name + label)
-                    dir_sum = output_path(dir_base, suffix, fmt)
-                if not dir_sum.exists():
-                    continue
-                if dry_run:
-                    logger.info("Would clean: %s", dir_sum)
-                else:
-                    dir_sum.unlink()
-                    logger.info("Cleaned: %s", dir_sum)
-                removed += 1
-
-    # Sweep leftover error sidecars (always .txt). Since EPIC-049 failures are
-    # recorded in the index, not on disk — these are pre-049 / disabled-index
-    # leftovers. state.clear() below drops the index `errors` table too.
-    err_suffixes = {
-        config.transcription.error_suffix,
-        config.postprocessing.error_suffix,
-        config.file_summarization.error_suffix,
-        config.dir_summarization.error_suffix,
-    }
-    for suffix in sorted(err_suffixes):
-        for err_file in sorted(config.watch_dir.rglob(f"*{suffix}.txt")):
-            if dry_run:
-                logger.info("Would clean: %s", err_file)
-            else:
-                err_file.unlink()
-                logger.info("Cleaned: %s", err_file)
-            removed += 1
-
-    if config.state.enabled:
-        from whispercrawl.state import default_state_path
-        state_path = config.state.path or default_state_path(config.watch_dir)  # load_config always resolves .path
+    def _rm(path: Path) -> None:
+        nonlocal removed
+        if not path.exists():
+            return
         if dry_run:
-            logger.info("Would clear processing index: %s", state_path)
-        elif Path(state_path).exists():
-            from whispercrawl.state import ProcessingState
-            with ProcessingState.open(state_path) as st:
-                st.clear()
-            logger.info("Cleared processing index: %s", state_path)
+            logger.info("Would clean: %s", path)
+        else:
+            path.unlink()
+            logger.info("Cleaned: %s", path)
+        removed += 1
+
+    media = [
+        p for p in sorted(config.watch_dir.rglob("*"))
+        if p.is_file() and p.suffix.lower() in config.extensions
+    ]
+
+    # Per-file consolidated result, one per ASR engine, any formatter extension.
+    for media_path in media:
+        for label in elabels:
+            for ext in _result_exts:
+                _rm(media_path.with_name(media_path.stem + label + ext))
+
+    # Per-directory consolidated result, alongside the media files.
+    dir_prefix = "_" if config.dir_summarization.underscore_prefix else ""
+    for dir_path in sorted({p.parent for p in media}):
+        for label in elabels:
+            for ext in _result_exts:
+                _rm(dir_path / (dir_prefix + dir_path.name + label + ext))
+
+    from whispercrawl.state import default_state_path
+    state_path = config.state.path or default_state_path(config.watch_dir)
+    if dry_run:
+        logger.info("Would clear processing index: %s", state_path)
+    elif Path(state_path).exists():
+        from whispercrawl.state import ProcessingState
+        with ProcessingState.open(state_path) as st:
+            st.clear()
+        logger.info("Cleared processing index: %s", state_path)
 
     if removed == 0:
         logger.info("No output files found in %s", config.watch_dir)
@@ -190,26 +148,16 @@ def run_pipeline(
 
     ``refresh`` re-runs every step downstream of ASR (post-process, summarize,
     per-directory concat/summary, format) from the transcript text stored in the
-    processing index — no whisper call. It requires the index and text storage
-    to be enabled.
+    processing index — no whisper call.
     """
     from whispercrawl.state import NullState, open_state
-
-    if refresh and not (config.state.enabled and config.state.store_text):
-        logger.error(
-            "--refresh needs state.enabled: true and state.store_text: true "
-            "(the raw transcript is read back from the index)."
-        )
-        return
 
     if dry_run:
         state = NullState()
     else:
         # config.state.path is always resolved by load_config; watch_dir enables
         # the one-time migration of a legacy <watch_dir>/.whispercrawl/state.db.
-        state = open_state(
-            config.state.enabled, config.state.path, config.watch_dir, watch_dir=config.watch_dir
-        )
+        state = open_state(config.state.path, config.watch_dir, watch_dir=config.watch_dir)
     try:
         _run_pipeline(config, state, dry_run, cleanup, refresh)
     finally:
@@ -224,13 +172,11 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
     from whispercrawl.pipeline.postprocessor import PostProcessor, PostProcessingError
     from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
     from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
-    from whispercrawl.state import ProcessingState
     from whispercrawl.utils.service_logger import ServiceLogger
 
-    # Failures go to the processing index (an ``errors`` row + status='error').
-    # Only when the index is disabled do we fall back to a ``<file>_err.txt``
-    # sidecar so an error is never silently lost.
-    _index_errors = isinstance(state, ProcessingState)
+    # Failures are recorded in the processing index (an ``errors`` row +
+    # status='error'); nothing is written beside the audio. On ``--dry-run``
+    # ``state`` is a NullState and these calls are no-ops.
 
     def _rel_dir(p: Path) -> str:
         try:
@@ -244,17 +190,13 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         engine: str,
         message: str,
         *,
-        err_path: Path,
         scope: str = "file",
         mtime: "float | None" = None,
         size: "int | None" = None,
     ) -> None:
-        if _index_errors:
-            state.record_error(
-                rel, step, message, engine=engine, scope=scope, mtime=mtime, size=size
-            )
-        else:
-            err_path.write_text(message, encoding="utf-8")
+        state.record_error(
+            rel, step, message, engine=engine, scope=scope, mtime=mtime, size=size
+        )
 
     engines = config.transcription.engines
     files = list(iter_media_files(
@@ -283,7 +225,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         config.cleanup, fmt,
         engine_labels=[engine_label(e.name) for e in engines],
     )
-    _rescan_labels = [s for s in config.cleanup.targets if not s.endswith(".json")]
 
     if dry_run:
         if not files:
@@ -291,7 +232,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         for f in files:
             logger.info("Would process: %s", f)
             if config.rescan:
-                cleaner.clean_other_formats(f, _rescan_labels, dry_run=True)
+                cleaner.clean_other_formats(f, dry_run=True)
         return
 
     formatter = Formatter(
@@ -351,7 +292,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             file_engine_ok.setdefault(file_path, {})
 
             if config.rescan:
-                cleaner.clean_other_formats(file_path, _rescan_labels)
+                cleaner.clean_other_formats(file_path)
 
             contexts = []
             for eng in engines:
@@ -389,7 +330,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     logger.error("Transcription failed for %s: %s", tag, e)
                     _report_error(
                         rel, "transcribe", name, str(e),
-                        err_path=output_path(file_path, elabel + eng.error_suffix, "txt"),
                         mtime=fst.st_mtime if fst is not None else None,
                         size=fst.st_size if fst is not None else None,
                     )
@@ -402,8 +342,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 logger.info("Transcribed: %s", tag)
                 if fst is not None:
                     state.mark_step(rel, "transcribe", fst.st_mtime, fst.st_size, name)
-                    if config.state.store_text:
-                        state.save_text(rel, "asr", transcript, fst.st_mtime, fst.st_size, name)
+                    state.save_text(rel, "asr", transcript, fst.st_mtime, fst.st_size, name)
 
             dir_file_texts.setdefault(file_path.parent, {}).setdefault(name, {})[file_path.name] = [
                 transcript, None
@@ -441,9 +380,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 logger.error("Post-processing failed for %s: %s", file_path, e)
                 _report_error(
                     rel, "postprocess", eng, str(e),
-                    err_path=output_path(
-                        file_path, ctx["elabel"] + config.postprocessing.error_suffix, "txt"
-                    ),
                     mtime=fst.st_mtime if fst is not None else None,
                     size=fst.st_size if fst is not None else None,
                 )
@@ -455,8 +391,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             logger.info("Post-processed: %s", file_path)
             if fst is not None:
                 state.mark_step(rel, "postprocess", fst.st_mtime, fst.st_size, eng)
-                if config.state.store_text:
-                    state.save_text(rel, "fixed", fixed_text, fst.st_mtime, fst.st_size, eng)
+                state.save_text(rel, "fixed", fixed_text, fst.st_mtime, fst.st_size, eng)
 
         def _summarize_one(file_path: Path, ctx: dict) -> None:
             if not file_summarizer:
@@ -475,9 +410,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 logger.error("File summarization failed for %s: %s", file_path, e)
                 _report_error(
                     rel, "file_summarize", eng, str(e),
-                    err_path=output_path(
-                        file_path, ctx["elabel"] + config.file_summarization.error_suffix, "txt"
-                    ),
                     mtime=fst.st_mtime if fst is not None else None,
                     size=fst.st_size if fst is not None else None,
                 )
@@ -517,20 +449,11 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             results = file_engine_ok.get(file_path, {})
             if not results:
                 # nothing ran for any engine (e.g. --refresh with no stored text) —
-                # leave the index untouched and write no _err.txt
+                # leave the index untouched
                 return
             all_ok = all(results.values())
             if cleanup:
                 cleaner.clean(file_path, all_ok)
-            if all_ok and not _index_errors:
-                # disabled-index fallback: sweep the stale _err.txt sidecars
-                for eng in engines:
-                    err_path = output_path(
-                        file_path, engine_label(eng.name) + config.transcription.error_suffix, "txt"
-                    )
-                    if err_path.exists():
-                        err_path.unlink()
-                        logger.debug("Removed stale error file: %s", err_path)
             failed = [e or "(default)" for e, ok in results.items() if not ok]
             _record(rel, fst, "done" if all_ok else "error",
                     "" if all_ok else f"pipeline step failed for engine(s): {', '.join(failed)}")
@@ -564,7 +487,6 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             for eng_name in sorted(dir_file_texts[dir_path]):
                 elabel = engine_label(eng_name)
                 dir_base = dir_path / (prefix + dir_path.name + elabel)
-                dir_err_path = output_path(dir_base, config.dir_summarization.error_suffix, "txt")
                 try:
                     selected = {
                         name: _pick_summary_input(
@@ -592,29 +514,21 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     all_outputs_to_format.append(dir_result_path)
                     logger.info("Directory result written: %s", dir_result_path)
 
-                    if _index_errors:
-                        state.clear_errors(dir_rel, engine=eng_name, scope="dir")
-                    elif dir_err_path.exists():
-                        dir_err_path.unlink()
-                        logger.debug("Removed stale error file: %s", dir_err_path)
+                    state.clear_errors(dir_rel, engine=eng_name, scope="dir")
                 except SummarizationError as e:
                     logger.error("Directory summarization failed for %s: %s", dir_path, e)
-                    _report_error(
-                        dir_rel, "dir_summarize", eng_name, str(e),
-                        err_path=dir_err_path, scope="dir",
-                    )
+                    _report_error(dir_rel, "dir_summarize", eng_name, str(e), scope="dir")
         dir_file_texts.clear()
 
-        if _index_errors:
-            outstanding = state.get_errors()
-            if outstanding:
-                n_files = len({e.path for e in outstanding if e.scope == "file"})
-                n_dirs = sum(1 for e in outstanding if e.scope == "dir")
-                logger.warning(
-                    "%d file(s) and %d directory step(s) finished with errors; "
-                    "run 'whispercrawl --errors' for details",
-                    n_files, n_dirs,
-                )
+        outstanding = state.get_errors()
+        if outstanding:
+            n_files = len({e.path for e in outstanding if e.scope == "file"})
+            n_dirs = sum(1 for e in outstanding if e.scope == "dir")
+            logger.warning(
+                "%d file(s) and %d directory step(s) finished with errors; "
+                "run 'whispercrawl --errors' for details",
+                n_files, n_dirs,
+            )
 
         for path in all_outputs_to_format:
             if path.exists():
@@ -637,7 +551,7 @@ def main() -> None:
         "--refresh",
         action="store_true",
         help="Re-run post-processing, summarization, and formatting from the transcript "
-        "text stored in the processing index — no whisper call. Needs state.enabled + state.store_text.",
+        "text stored in the processing index — no whisper call.",
     )
     args = parser.parse_args()
 

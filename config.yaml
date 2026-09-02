@@ -32,18 +32,17 @@ skip_marker: _skip
 # Files older than this are skipped and newer files are processed first (mtime, in days); omit/null = unbounded
 max_age_days: 180
 
-# Persisted index of processed files — avoids re-checking the whole tree every run.
-# Deleting the file is safe: the next run re-derives it from existing output files (no reprocessing).
-# The index also stores each file's raw ASR transcript and post-processed text; this powers
-#   whispercrawl --refresh  — re-run post-processing, summarization, and formatting from the
-#   stored transcript with the current config and no whisper call (needs enabled: true + store_text: true).
-# Pipeline failures are recorded here too (no _err.txt beside the audio unless enabled: false):
+# Persisted index of processed files (SQLite, always on) — avoids re-checking the whole
+# tree every run. Deleting the file is safe: the next run re-derives it from existing
+# output files (no reprocessing). The index also stores each file's raw ASR transcript
+# and post-processed text, which powers:
+#   whispercrawl --refresh  — re-run post-processing, summarization, and formatting from
+#                             the stored transcript with the current config, no whisper call.
+# Pipeline failures are recorded here too (nothing is written beside the audio):
 #   whispercrawl --errors   — list what failed and why; exits non-zero if anything is outstanding.
-state:
-  enabled: true
-  # store_text: true                       # keep raw + fixed transcript text in the index (enables --refresh)
-  # path: ./db/state.db                    # default: <config dir>/db/state.db
-  # (a legacy <watch_dir>/.whispercrawl/state.db is moved here automatically on first run)
+# state:
+#   path: ./db/state.db     # override the default location (own mount, writable disk, …)
+#   # (a legacy <watch_dir>/.whispercrawl/state.db is moved here automatically on first run)
 
 # Max files to process per run; the rest are picked up on the next scheduled run; omit/null = unlimited
 # max_files_per_run: 500
@@ -72,12 +71,13 @@ result:
 
 # ── Transcription ─────────────────────────────────────────────────────────────
 transcription:
-  url: ${WHISPER_URL:http://localhost:9000}   # whisper-asr-webservice base URL
+  url: ${WHISPER_URL:http://127.0.0.1:9000}   # whisper-asr-webservice base URL
+                                              # use 127.0.0.1, not localhost: on Windows 'localhost'
+                                              # resolves to ::1 first and Docker Desktop's IPv6 proxy
+                                              # stalls multipart uploads (request never reaches the container)
   language: ru                    # Default language: auto, ru, en, etc.
   diarize: true                    # Enable speaker diarization (requires HF_TOKEN in whisper container for whisperx)
   output_suffix: ""                 # Suffix label (extension comes from formatter.format)
-  error_suffix: _err                # <file>_err.txt — only when state.enabled: false; otherwise
-                                    # failures go to db/state.db (see: whispercrawl --errors)
   timeout: 3600                      # HTTP timeout in seconds (whisperx large on CPU is slow)
   speaker_timestamps: true          # Prefix each speaker segment with HH:MM:SS start time
   # initial_prompt: ""                # Hint text passed to the model
@@ -101,7 +101,7 @@ transcription:
 postprocessing:
   llm_enabled: false    # LLM correction via ollama (default: true)
   regex_enabled: true  # Regex cleanup pass (default: true)
-  url: ${OLLAMA_URL:http://localhost:11434}       # ollama base URL
+  url: ${OLLAMA_URL:http://127.0.0.1:11434}       # ollama base URL
   model: gemma3:1b
   prompt: |
     Ты редактор транскрипций. Исправь грамматику, пунктуацию и очевидные
@@ -137,8 +137,6 @@ postprocessing:
     - '.*Аминь.\n'
     - '.*Аллилуйя.\n'
     - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
-  error_suffix: _err                # <file>_err.txt — only when state.enabled: false; otherwise
-                                    # failures go to db/state.db (see: whispercrawl --errors)
   timeout: 600                      # HTTP timeout in seconds
   # output_suffix / replace_transcription: deprecated no-ops since EPIC-047 —
   #   post-processed text goes into the one result file and the index, not a _fix sidecar.
@@ -153,13 +151,11 @@ postprocessing:
 file_summarization:
   llm_enabled: false
   summarize_source: postprocessed   # "postprocessed" (_fix) | "original" (transcript)
-  url: ${OLLAMA_URL:http://localhost:11434}
+  url: ${OLLAMA_URL:http://127.0.0.1:11434}
   model: gemma3:1b
   prompt: |
     Составь краткое резюме транскрипции ниже. Выдели ключевые темы,
     принятые решения и задачи к выполнению. Отвечай на языке текста.
-  error_suffix: _err                # <file>_err.txt — only when state.enabled: false; otherwise
-                                    # failures go to db/state.db (see: whispercrawl --errors)
   timeout: 300                      # HTTP timeout in seconds
   # output_suffix: deprecated no-op since EPIC-047 (the summary is a section of <file>.<ext>)
 
@@ -168,30 +164,23 @@ dir_summarization:
   concat_source: postprocessed      # "postprocessed" | "original" — which per-file text to concatenate
   underscore_prefix: true        # true → the one dir result is named _<dirname>.<ext> (else <dirname>.<ext>)
   llm_enabled: false
-  url: ${OLLAMA_URL:http://localhost:11434}
+  url: ${OLLAMA_URL:http://127.0.0.1:11434}
   model: gemma3:1b
   prompt: |
     Ниже приведены транскрипции нескольких записей одной встречи или сессии.
     Напиши единое сводное резюме: главные темы, итоги и договорённости.
     Отвечай на языке текста.
-  error_suffix: _err                # <file>_err.txt — only when state.enabled: false; otherwise
-                                    # failures go to db/state.db (see: whispercrawl --errors)
   timeout: 300                      # HTTP timeout in seconds
   # concat_suffix / output_suffix: deprecated no-ops since EPIC-047 (one dir result file)
 
-# ── Cleanup (used with --cleanup / --once --cleanup flags) ───────────────────
-# targets: suffix labels to remove (extension derived from formatter.format; _diarize.json always literal)
-#   "" is the consolidated per-file / per-directory result; _fix/_sum/_all/_concat are
-#   pre-047 sidecars, kept here so one --cleanup pass sweeps an upgraded catalog.
-# on: "success" — only clean when all pipeline steps succeeded
-#     "always"  — clean even after a failed step
+# ── Cleanup (--cleanup, or --once --cleanup) ────────────────────────────────
+# Removes the consolidated result files this version writes:
+#   <file>.<ext> and _<dirname>.<ext>  (one set per ASR engine, any formatter extension)
+# and empties the processing index. Pre-047 sidecars (_fix/_sum/_all/_concat) and
+# _err.txt files are left alone — delete those by hand when upgrading an old catalog.
+#   on: success — clean only when every pipeline step for the file succeeded
+#      always  — clean even after a failed step
 cleanup:
-  targets:
-    - ""
-    - _fix
-    - _sum
-    - _all
-    - _concat
   on: success
 
 # ── Logging ───────────────────────────────────────────────────────────────────

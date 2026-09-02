@@ -4,6 +4,35 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-052: Cleanup Removes Only the Current Version's Outputs — Drop `error_suffix` and Legacy `cleanup.targets`
+
+_Depends on EPIC-051. See [epics/EPIC-052-cleanup-current-outputs-only.md](../epics/EPIC-052-cleanup-current-outputs-only.md). Landed 2026-09-02._
+
+- [x] `config.py`: remove `error_suffix` from `TranscriptionConfig` and `OllamaStepConfig`; remove `targets` from `CleanupConfig` (keep `on`); `cleanup.targets` + four `*.error_suffix` added to the deprecated-key WARNING loop (EPIC-052, 2026-09-02)
+- [x] `pipeline/cleaner.py`: `clean()` removes only the single consolidated result per engine label; `clean_other_formats()` lost the `suffix_labels` param; `.json` branch gone (EPIC-052, 2026-09-02)
+- [x] `main.py` `run_cleanup()`: rewritten — removes `<file>.<ext>` / `_<dirname>.<ext>` per engine in every extension, empties the index; `targets` loops, `.json` branch, and `*_err.txt` sweep all gone (EPIC-052, 2026-09-02)
+- [x] `main.py` `_run_pipeline()`: `_rescan_labels` dropped; `cleaner.clean_other_formats(...)` calls updated; no `config.*.error_suffix` reference remains (EPIC-052, 2026-09-02)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: four `error_suffix:` lines removed; `cleanup:` block is `on:` only with the "sidecars left alone" comment (EPIC-052, 2026-09-02)
+- [x] Docs — `CLAUDE.md`, `docs/architecture/overview.md` (`CleanupConfig` / `StateConfig` rows, cleanup prose), `ADR-006-index-always-on.md`, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md` (EPIC-052, 2026-09-02)
+- [x] Tests: `test_config.py` (deprecation WARNING, no `targets`/`error_suffix` attrs), `test_cleanup_cli.py` (rewritten — multi-engine + all-extension removal, `_fix`/`_err.txt` left in place), `test_pipeline/test_cleaner.py` + `test_rescan_cleans_formats.py` + `test_output_format.py` rewritten; `error_suffix=` / `targets=` kwargs dropped across the suite; 450 pass (EPIC-052, 2026-09-02)
+
+---
+
+## EPIC-051: The Processing Index Is Always On — Remove `state.enabled` / `state.store_text`
+
+_See [epics/EPIC-051-always-on-processing-index.md](../epics/EPIC-051-always-on-processing-index.md). Landed 2026-09-02._
+
+- [x] `config.py`: `StateConfig` keeps only `path`; `state.enabled` / `state.store_text` added to the deprecated-key WARNING loop (EPIC-051, 2026-09-02)
+- [x] `state.py`: `open_state(path, config_root, watch_dir=None)` — `enabled` param gone, always returns `ProcessingState`; `NullState` docstring updated (`--dry-run` stand-in) (EPIC-051, 2026-09-02)
+- [x] `main.py` `run_errors()`: `state.enabled: false` early-return removed; always opens the index (EPIC-051, 2026-09-02)
+- [x] `main.py` `run_cleanup()` / `run_pipeline()`: `state.enabled` guard and `--refresh` precondition removed; `open_state(config.state.path, config.watch_dir, watch_dir=…)` (EPIC-051, 2026-09-02)
+- [x] `main.py` `_run_pipeline()`: `_index_errors` dropped; `_report_error` always calls `state.record_error`; `_write_error()` deleted; both `store_text` guards removed; `--refresh` `--help` text trimmed (EPIC-051, 2026-09-02)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: `state:` block is a commented `path:` hint (EPIC-051, 2026-09-02)
+- [x] Docs — `CLAUDE.md` Key Conventions, `docs/architecture/overview.md`, `ADR-005` superseded note, `deploy/prod/DEPLOY.md`, `deploy/prod-local/DEPLOY.md` (EPIC-051, 2026-09-02)
+- [x] Tests: `test_config.py`, `test_state.py` (new `open_state` signature), `test_refresh.py` / `test_errors_cli.py` / `test_processing_index.py` / `test_pipeline_err_cleanup.py` disabled-state cases removed; 450 pass (EPIC-051, 2026-09-02)
+
+---
+
 ## EPIC-050: Pull the ASR Service Image from the Internal Registry (`asr-webservice:latest`)
 
 _Deployment artifacts only — no `src/` or test changes. Landed 2026-09-02._

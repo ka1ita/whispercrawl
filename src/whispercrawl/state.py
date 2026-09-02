@@ -318,7 +318,7 @@ class ProcessingState:
 
 
 class NullState:
-    """No-op stand-in used when the persisted index is disabled."""
+    """No-op index used for ``--dry-run``, which records nothing."""
 
     def lookup(self, rel_path: str) -> None:
         return None
@@ -425,14 +425,11 @@ def _migrate_legacy_index(resolved: Path, watch_dir: Optional[Union[str, Path]])
 
 
 def open_state(
-    enabled: bool,
     path: Optional[Union[str, Path]],
     config_root: Union[str, Path],
     watch_dir: Optional[Union[str, Path]] = None,
-) -> State:
-    """Return a live ``ProcessingState`` or a ``NullState`` per config."""
-    if not enabled:
-        return NullState()
+) -> ProcessingState:
+    """Open the processing index (always enabled), migrating a legacy location if any."""
     resolved = Path(path) if path else Path(default_state_path(config_root))
     _migrate_legacy_index(resolved, watch_dir)
     logger.debug("Opening processing index at %s", resolved)

@@ -27,7 +27,6 @@ class TranscriptionConfig:
     language: str = "auto"
     diarize: bool = False
     output_suffix: str = ""
-    error_suffix: str = "_err"
     timeout: int = 300
 
     speaker_timestamps: bool = False  # prefix each diarized segment with HH:MM:SS start time
@@ -59,7 +58,6 @@ class OllamaStepConfig:
     model: str = "llama3.2"
     prompt: str = ""
     output_suffix: str = "_fix"
-    error_suffix: str = "_err"
     llm_enabled: bool = True    # controls LLM correction step
     regex_enabled: bool = True  # controls regex cleanup pass
     replace_transcription: bool = False  # move _fix over transcript after success
@@ -81,12 +79,11 @@ class ScheduleConfig:
 
 @dataclass
 class CleanupConfig:
-    # "" is the consolidated per-file / per-directory result (EPIC-047); the
-    # rest are pre-047 scattered sidecars, swept once on upgrade.
-    targets: List[str] = field(
-        default_factory=lambda: ["", "_fix", "_sum", "_all", "_concat", "_diarize.json"]
-    )
-    on: str = "success"  # "success" | "always"
+    # ``--cleanup`` removes only the consolidated result files this version
+    # writes (``<file>.<ext>`` / ``_<dirname>.<ext>``, one set per engine) plus
+    # stale-extension copies, and empties the processing index. Pre-047 sidecars
+    # and ``_err.txt`` files are an operator concern (EPIC-052).
+    on: str = "success"  # "success" | "always" — clean only after full success, or always
 
 
 @dataclass
@@ -118,9 +115,9 @@ class ResultConfig:
 
 @dataclass
 class StateConfig:
-    enabled: bool = True             # persisted index of processed files
+    # The persisted processing index is always on and always stores transcript
+    # text (EPIC-051). Only its location is configurable.
     path: Optional[str] = None       # default: <config dir>/db/state.db
-    store_text: bool = True          # keep raw + post-processed transcript text in the index (powers --refresh)
 
 
 @dataclass
@@ -209,18 +206,25 @@ def load_config(path: Path) -> Config:
             f"result.heading_level must be between 1 and 6, got {result_cfg.heading_level!r}"
         )
 
-    for _sect, _fld in (
-        ("postprocessing", "replace_transcription"),
-        ("file_summarization", "output_suffix"),
-        ("dir_summarization", "concat_suffix"),
-        ("dir_summarization", "output_suffix"),
+    _epic_047 = "EPIC-047 (one consolidated result file per audio file / per directory)"
+    _epic_052_err = (
+        "EPIC-052 (failures are recorded in the processing index; run 'whispercrawl --errors')"
+    )
+    for _sect, _fld, _since in (
+        ("postprocessing", "replace_transcription", _epic_047),
+        ("file_summarization", "output_suffix", _epic_047),
+        ("dir_summarization", "concat_suffix", _epic_047),
+        ("dir_summarization", "output_suffix", _epic_047),
+        ("state", "enabled", "EPIC-051 (the processing index is always enabled)"),
+        ("state", "store_text", "EPIC-051 (the processing index always stores transcript text)"),
+        ("cleanup", "targets", "EPIC-052 (cleanup always targets the one consolidated result file)"),
+        ("transcription", "error_suffix", _epic_052_err),
+        ("postprocessing", "error_suffix", _epic_052_err),
+        ("file_summarization", "error_suffix", _epic_052_err),
+        ("dir_summarization", "error_suffix", _epic_052_err),
     ):
         if isinstance(raw.get(_sect), dict) and _fld in raw[_sect]:
-            logger.warning(
-                "%s.%s is deprecated and ignored since EPIC-047 (one consolidated "
-                "result file per audio file / per directory)",
-                _sect, _fld,
-            )
+            logger.warning("%s.%s is deprecated and ignored since %s", _sect, _fld, _since)
 
     tr_raw = dict(raw.get("transcription", {}) or {})
     engine_entries = tr_raw.pop("engines", None) or []

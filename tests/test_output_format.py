@@ -134,12 +134,12 @@ def _html_config(tmp_path: Path) -> Config:
         extensions=[".mp3"],
         rescan=True,
         formatter=FormatterConfig(format="html"),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -195,12 +195,12 @@ class TestFormatterDisabled:
             extensions=[".mp3"],
             rescan=True,
             formatter=FormatterConfig(format="html", enabled=False),
-            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            transcription=TranscriptionConfig(output_suffix=""),
             postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
             file_summarization=OllamaStepConfig(llm_enabled=False),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(targets=[]),
+            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
         with patch(
@@ -216,28 +216,28 @@ class TestFormatterDisabled:
 # ── HTML cleanup ──────────────────────────────────────────────────────────────
 
 class TestHtmlCleanup:
-    def test_cleanup_removes_html_output_files(self, tmp_path):
+    def test_cleanup_removes_html_result_leaves_legacy_sidecar(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
         html_out = tmp_path / "call.html"
         html_out.write_text("x")
-        fix_html = tmp_path / "call_fix.html"
+        fix_html = tmp_path / "call_fix.html"  # pre-047 sidecar — left alone
         fix_html.write_text("x")
 
         cfg = Config(
             watch_dir=tmp_path,
             extensions=[".mp3"],
             formatter=FormatterConfig(format="html"),
-            cleanup=CleanupConfig(targets=["", "_fix"], on="success"),
+            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
         run_cleanup(cfg)
 
         assert not html_out.exists()
-        assert not fix_html.exists()
+        assert fix_html.exists()
         assert audio.exists()
 
-    def test_html_cleanup_does_not_remove_txt_files(self, tmp_path):
+    def test_cleanup_removes_the_result_in_every_extension(self, tmp_path):
         audio = tmp_path / "call.mp3"
         audio.touch()
         txt_out = tmp_path / "call.txt"
@@ -247,12 +247,12 @@ class TestHtmlCleanup:
             watch_dir=tmp_path,
             extensions=[".mp3"],
             formatter=FormatterConfig(format="html"),
-            cleanup=CleanupConfig(targets=[""], on="success"),
+            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
         run_cleanup(cfg)
 
-        assert txt_out.exists()
+        assert not txt_out.exists()
 
 
 # ── TXT pipeline output ───────────────────────────────────────────────────────
@@ -263,12 +263,12 @@ def _txt_config(tmp_path: Path) -> Config:
         extensions=[".mp3"],
         rescan=True,
         formatter=FormatterConfig(format="txt"),
-        transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+        transcription=TranscriptionConfig(output_suffix=""),
         postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
         file_summarization=OllamaStepConfig(llm_enabled=False),
         dir_summarization=DirSummarizationConfig(llm_enabled=False),
         schedule=ScheduleConfig(),
-        cleanup=CleanupConfig(targets=[]),
+        cleanup=CleanupConfig(),
         logging=LoggingConfig(),
     )
 
@@ -307,12 +307,12 @@ class TestConsolidatedFileResult:
             extensions=[".mp3"],
             rescan=True,
             formatter=FormatterConfig(format="txt"),
-            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            transcription=TranscriptionConfig(output_suffix=""),
             postprocessing=OllamaStepConfig(llm_enabled=True, regex_enabled=False),
             file_summarization=OllamaStepConfig(llm_enabled=True),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(targets=[]),
+            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -374,20 +374,18 @@ class TestDirSumAfterFormatter:
             extensions=[".mp3"],
             rescan=True,
             formatter=FormatterConfig(format=fmt),
-            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            transcription=TranscriptionConfig(output_suffix=""),
             postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
             file_summarization=OllamaStepConfig(
                 llm_enabled=True,
                 output_suffix="_sum",
-                error_suffix="_err",
             ),
             dir_summarization=DirSummarizationConfig(
                 llm_enabled=True,
                 output_suffix="_sum",
-                error_suffix="_err",
             ),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(targets=[]),
+            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -473,12 +471,12 @@ class TestConcatFormatterPass:
             extensions=[".mp3"],
             rescan=True,
             formatter=FormatterConfig(format=fmt),
-            transcription=TranscriptionConfig(output_suffix="", error_suffix="_err"),
+            transcription=TranscriptionConfig(output_suffix=""),
             postprocessing=OllamaStepConfig(llm_enabled=False, regex_enabled=False),
             file_summarization=OllamaStepConfig(llm_enabled=False),
             dir_summarization=DirSummarizationConfig(llm_enabled=False),
             schedule=ScheduleConfig(),
-            cleanup=CleanupConfig(targets=[]),
+            cleanup=CleanupConfig(),
             logging=LoggingConfig(),
         )
 
@@ -511,50 +509,32 @@ class TestConcatFormatterPass:
         assert (tmp_path / f"{tmp_path.name}.txt").exists()
 
 
-# ── Cleanup removes concat in correct format (EPIC-034) ──────────────────────
+# ── Cleanup removes the per-directory result in every extension ──────────────
 
-class TestConcatCleanup:
+class TestDirResultCleanup:
     def _config(self, tmp_path: Path, fmt: str) -> Config:
         return Config(
             watch_dir=tmp_path,
             extensions=[".mp3"],
             formatter=FormatterConfig(format=fmt),
-            dir_summarization=DirSummarizationConfig(concat_suffix="_concat"),
-            cleanup=CleanupConfig(targets=["_concat"], on="success"),
+            dir_summarization=DirSummarizationConfig(),
+            cleanup=CleanupConfig(on="success"),
             logging=LoggingConfig(),
         )
 
-    def test_md_cleanup_removes_concat_md(self, tmp_path):
-        audio = tmp_path / "rec.mp3"
-        audio.touch()
-        concat = tmp_path / f"{tmp_path.name}_concat.md"
-        concat.write_text("x")
+    def test_cleanup_removes_dir_result_md(self, tmp_path):
+        (tmp_path / "rec.mp3").touch()
+        result = tmp_path / f"{tmp_path.name}.md"
+        result.write_text("x")
         run_cleanup(self._config(tmp_path, "md"))
-        assert not concat.exists()
+        assert not result.exists()
 
-    def test_md_cleanup_leaves_concat_txt_alone(self, tmp_path):
-        audio = tmp_path / "rec.mp3"
-        audio.touch()
-        concat_txt = tmp_path / f"{tmp_path.name}_concat.txt"
-        concat_txt.write_text("x")
+    def test_cleanup_removes_dir_result_regardless_of_current_format(self, tmp_path):
+        (tmp_path / "rec.mp3").touch()
+        stale = tmp_path / f"{tmp_path.name}.txt"
+        stale.write_text("x")
         run_cleanup(self._config(tmp_path, "md"))
-        assert concat_txt.exists()
-
-    def test_html_cleanup_removes_concat_html(self, tmp_path):
-        audio = tmp_path / "rec.mp3"
-        audio.touch()
-        concat = tmp_path / f"{tmp_path.name}_concat.html"
-        concat.write_text("x")
-        run_cleanup(self._config(tmp_path, "html"))
-        assert not concat.exists()
-
-    def test_txt_cleanup_removes_concat_txt(self, tmp_path):
-        audio = tmp_path / "rec.mp3"
-        audio.touch()
-        concat = tmp_path / f"{tmp_path.name}_concat.txt"
-        concat.write_text("x")
-        run_cleanup(self._config(tmp_path, "txt"))
-        assert not concat.exists()
+        assert not stale.exists()
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
