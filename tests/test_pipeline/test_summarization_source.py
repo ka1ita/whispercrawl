@@ -5,8 +5,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import Config, DirSummarizationConfig, OllamaStepConfig, TranscriptionConfig
-from whispercrawl.main import _pick_summary_input, run_pipeline
+from asr_crawler.config import Config, DirSummarizationConfig, OllamaStepConfig, TranscriptionConfig
+from asr_crawler.main import _pick_summary_input, run_pipeline
 
 
 # ── _pick_summary_input unit tests ────────────────────────────────────────────
@@ -35,7 +35,7 @@ class TestPickSummaryInput:
 # ── run_pipeline integration tests ────────────────────────────────────────────
 
 def _minimal_config(tmp_path: Path, summarize_source: str, post_llm: bool = True) -> Config:
-    from whispercrawl.config import (
+    from asr_crawler.config import (
         LoggingConfig, ScheduleConfig,
     )
     return Config(
@@ -92,10 +92,10 @@ class TestRunPipelineSummarizationSource:
         sm_cls, sm_inst = _mock_summarizer_cls()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", tr_cls),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", pp_cls),
-            patch("whispercrawl.pipeline.summarizer.Summarizer", sm_cls),
-            patch("whispercrawl.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
+            patch("asr_crawler.pipeline.transcriber.Transcriber", tr_cls),
+            patch("asr_crawler.pipeline.postprocessor.PostProcessor", pp_cls),
+            patch("asr_crawler.pipeline.summarizer.Summarizer", sm_cls),
+            patch("asr_crawler.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
         ):
             mock_svc_log_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
             mock_svc_log_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -115,10 +115,10 @@ class TestRunPipelineSummarizationSource:
         sm_cls, sm_inst = _mock_summarizer_cls()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", tr_cls),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor", pp_cls),
-            patch("whispercrawl.pipeline.summarizer.Summarizer", sm_cls),
-            patch("whispercrawl.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
+            patch("asr_crawler.pipeline.transcriber.Transcriber", tr_cls),
+            patch("asr_crawler.pipeline.postprocessor.PostProcessor", pp_cls),
+            patch("asr_crawler.pipeline.summarizer.Summarizer", sm_cls),
+            patch("asr_crawler.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
         ):
             mock_svc_log_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())
             mock_svc_log_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -137,9 +137,9 @@ class TestRunPipelineSummarizationSource:
         sm_cls, sm_inst = _mock_summarizer_cls()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber", tr_cls),
-            patch("whispercrawl.pipeline.summarizer.Summarizer", sm_cls),
-            patch("whispercrawl.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
+            patch("asr_crawler.pipeline.transcriber.Transcriber", tr_cls),
+            patch("asr_crawler.pipeline.summarizer.Summarizer", sm_cls),
+            patch("asr_crawler.utils.service_logger.ServiceLogger") as mock_svc_log_cls,
             caplog.at_level(logging.WARNING),
         ):
             mock_svc_log_cls.return_value.__enter__ = MagicMock(return_value=MagicMock())

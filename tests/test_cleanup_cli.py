@@ -1,14 +1,14 @@
 """Tests for --cleanup CLI action (run_cleanup) — current-version outputs only (EPIC-052)."""
 from pathlib import Path
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
     LoggingConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_cleanup
+from asr_crawler.main import run_cleanup
 
 EXTENSIONS = [".mp3", ".ogg", ".wav"]
 
@@ -122,7 +122,7 @@ class TestLeavesLegacyAndSidecarsAlone:
 
 class TestClearsIndex:
     def test_empties_the_processing_index(self, tmp_path):
-        from whispercrawl.state import ProcessingState
+        from asr_crawler.state import ProcessingState
 
         (tmp_path / "call.mp3").touch()
         db = tmp_path / "db" / "state.db"
@@ -139,7 +139,7 @@ class TestClearsIndex:
 
 class TestDryRun:
     def test_dry_run_keeps_everything(self, tmp_path):
-        from whispercrawl.state import ProcessingState
+        from asr_crawler.state import ProcessingState
 
         (tmp_path / "call.mp3").touch()
         result = _touch(tmp_path / "call.txt")

@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import TranscriptionConfig
-from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
+from asr_crawler.config import TranscriptionConfig
+from asr_crawler.pipeline.transcriber import Transcriber, TranscriptionError
 
 
 def _make_audio(tmp_path: Path) -> Path:
@@ -27,7 +27,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig()
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         data = mock_post.call_args.kwargs["params"]
@@ -40,7 +40,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig(initial_prompt="Meeting transcript:")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         assert mock_post.call_args.kwargs["params"]["initial_prompt"] == "Meeting transcript:"
@@ -49,7 +49,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig(vad_filter=True)
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         assert mock_post.call_args.kwargs["params"]["vad_filter"] == "true"
@@ -58,7 +58,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig(word_timestamps=False)
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         assert mock_post.call_args.kwargs["params"]["word_timestamps"] == "false"
@@ -67,7 +67,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig(encode=True)
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         assert mock_post.call_args.kwargs["params"]["encode"] == "true"
@@ -81,7 +81,7 @@ class TestTranscriberParamForwarding:
             encode=False,
         )
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         data = mock_post.call_args.kwargs["params"]
@@ -94,7 +94,7 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig(timeout=120)
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_response()) as mock_post:
             Transcriber(cfg).transcribe(audio)
 
         assert mock_post.call_args.kwargs["timeout"] == 120
@@ -104,6 +104,6 @@ class TestTranscriberParamForwarding:
         audio = _make_audio(tmp_path)
         cfg = TranscriptionConfig()
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", side_effect=httpx.ReadTimeout("timed out")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", side_effect=httpx.ReadTimeout("timed out")):
             with pytest.raises(TranscriptionError, match="whisper request failed"):
                 Transcriber(cfg).transcribe(audio)

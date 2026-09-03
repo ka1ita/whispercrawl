@@ -4,8 +4,8 @@ import threading
 
 import pytest
 
-from whispercrawl.config import LoggingConfig
-from whispercrawl.utils.service_logger import ServiceLogger, _truncate, _truncate_nested
+from asr_crawler.config import LoggingConfig
+from asr_crawler.utils.service_logger import ServiceLogger, _truncate, _truncate_nested
 
 _LOG_KWARGS = dict(
     service="whisper",

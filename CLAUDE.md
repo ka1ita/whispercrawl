@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**whispercrawl** is a Python service that recursively processes audio/video files in a directory, performing:
+**asr-crawler** is a Python service that recursively processes audio/video files in a directory, performing:
 
 1. Transcription + diarization via `whisper-asr-webservice`
 2. Post-processing (regex cleanup + LLM correction) via `ollama`
@@ -20,10 +20,10 @@ The service runs on a schedule and is config-file driven.
 pip install -e ".[dev]"
 
 # Run once (no schedule)
-whispercrawl --config config.yaml --once
+asr-crawler --config config.yaml --once
 
 # Dry run (log files that would be processed, no API calls)
-whispercrawl --config config.yaml --once --dry-run
+asr-crawler --config config.yaml --once --dry-run
 
 # Run tests
 pytest
@@ -40,10 +40,10 @@ ruff format src tests
 # deploy/dev/config.yaml — the dev config, which pre-wires both engines (EPIC-054).
 docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d
 
-# Rebuild whispercrawl image after changing src/ or pyproject.toml
-docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d --build whispercrawl
+# Rebuild asr-crawler image after changing src/ or pyproject.toml
+docker compose -f deploy/dev/docker-compose.dev.yml --env-file deploy/dev/.env up -d --build asr-crawler
 
-# ASR services only (for running whispercrawl locally via python); deploy/dev/app-python*.sh wrap this
+# ASR services only (for running asr-crawler locally via python); deploy/dev/app-python*.sh wrap this
 docker compose -f deploy/dev/docker-compose.services.yml --env-file deploy/dev/.env up -d
 ```
 
@@ -52,7 +52,7 @@ docker compose -f deploy/dev/docker-compose.services.yml --env-file deploy/dev/.
 ### Source layout
 
 ```text
-src/whispercrawl/
+src/asr_crawler/
   config.py          # Config dataclass + YAML loader
   file_walker.py     # Recursive file discovery, language detection from filename
   main.py            # CLI entry point (argparse)
@@ -86,7 +86,7 @@ partial result); the failure is recorded in the processing index
 `transcribe` / `postprocess` / `file_summarize` / `finalize` / `format` /
 `dir_summarize` / `dir_finalize`) and processing continues with the next file.
 Only `KeyboardInterrupt` / `SystemExit` abort the run (recorded `status='partial'`).
-`whispercrawl --errors` lists outstanding failures. No `_err.txt` sidecar is ever
+`asr-crawler --errors` lists outstanding failures. No `_err.txt` sidecar is ever
 written (EPIC-051/052/055).
 
 ### Key Conventions
@@ -115,7 +115,7 @@ written (EPIC-051/052/055).
 - **Language detection**: filename suffix `_ru`, `_en`, or `_auto` overrides the config default language passed to whisper.
 - **Skip mode** (`rescan: false`): if `<file>.<ext>` already exists (any format), that file is skipped entirely.
 - **Persisted index** (`<config dir>/db/state.db`, SQLite, always on — EPIC-051): a dedicated `db/` directory beside `config.yaml` (`/db/state.db` in the container, its own bind mount). Records `done`/`error` per file so runs skip the per-file output-existence probing and resume after interruption. Safe to delete — rebuilt from existing output files, no reprocessing. A legacy `<watch_dir>/.whispercrawl/state.db` is moved here automatically on first run. Only `state.path` is configurable (override the default location). `max_files_per_run` caps files per run; the rest wait for the next scheduled run.
-- **Recorded errors** (EPIC-049): a failing step writes an `errors` row (`path`, `engine`, `scope` `file`/`dir`, `step`, message) — never a `<file>_err.txt` sidecar; the row is cleared when that file/dir next succeeds, and dropped when the source file changes. `whispercrawl --errors` prints outstanding failures grouped by path and exits non-zero if any exist. `--cleanup` empties the `errors` table (with the rest of the index).
+- **Recorded errors** (EPIC-049): a failing step writes an `errors` row (`path`, `engine`, `scope` `file`/`dir`, `step`, message) — never a `<file>_err.txt` sidecar; the row is cleared when that file/dir next succeeds, and dropped when the source file changes. `asr-crawler --errors` prints outstanding failures grouped by path and exits non-zero if any exist. `--cleanup` empties the `errors` table (with the rest of the index).
 - **Resilient step failures** (EPIC-055): a step catches its typed exception *and* has a trailing catch-all — any other exception is logged (`logger.exception`), recorded as an `errors` row (`repr(e)` as the message), and the run moves to the next file instead of crashing with a traceback. The per-file loop, the per-directory loop, and the final formatting pass are each guarded the same way. `Transcriber.transcribe` wraps `open()` (`TranscriptionError("cannot read source file: …")`) and catches every `httpx.HTTPError`. `file_walker` skips a candidate that disappears between the directory scan and its `stat()`.
 - **Per-step resume**: the index also records which pipeline step (transcribe/postprocess/file-summarize) last completed for each file's current mtime/size. An interrupted run resumes mid-file — already-written step outputs are read back from disk instead of re-calling whisper/ollama — rather than restarting the whole file. A changed file (new mtime/size) discards its recorded steps and reprocesses from scratch.
 - **Stored transcript text** (always — EPIC-051): the index keeps each file's raw ASR transcript and post-processed text, keyed to its mtime/size. With EPIC-047 this is the *only* place the raw transcript lives — the on-disk result holds the post-processed (or raw) transcript body, never both. Resume and `--refresh` read the transcript back from here.

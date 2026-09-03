@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -17,10 +17,10 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_cleanup, run_pipeline
-from whispercrawl.pipeline.postprocessor import PostProcessingError
-from whispercrawl.pipeline.summarizer import SummarizationError
-from whispercrawl.pipeline.transcriber import TranscriptionError
+from asr_crawler.main import run_cleanup, run_pipeline
+from asr_crawler.pipeline.postprocessor import PostProcessingError
+from asr_crawler.pipeline.summarizer import SummarizationError
+from asr_crawler.pipeline.transcriber import TranscriptionError
 
 
 def _config(
@@ -52,7 +52,7 @@ def _transcripts(tmp_path: Path) -> set[str]:
 
 def _has_error(tmp_path: Path, rel: str) -> bool:
     """True when the processing index holds a failure row for ``rel`` (EPIC-049)."""
-    from whispercrawl.state import ProcessingState
+    from asr_crawler.state import ProcessingState
 
     with ProcessingState.open(tmp_path / "db" / "state.db") as st:
         return bool(st.get_errors(rel))
@@ -78,7 +78,7 @@ def _run(cfg: Config, fail_on: set[str] | None = None) -> list[str]:
             raise TranscriptionError("simulated failure")
         return f"transcript for {path.name}"
 
-    with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe):
+    with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe):
         run_pipeline(cfg)
     return processed
 
@@ -163,9 +163,9 @@ class TestStepResume:
             postprocess_calls.append(source_path.name)
             raise PostProcessingError("simulated failure")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
              patch(
-                 "whispercrawl.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
+                 "asr_crawler.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
              ):
             run_pipeline(cfg)
 
@@ -181,8 +181,8 @@ class TestStepResume:
             postprocess_calls.append(source_path.name)
             return f"fixed {text}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
-             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
             run_pipeline(cfg)
 
         assert transcribe_calls == ["a.mp3"]  # not called again — resumed from the index
@@ -214,9 +214,9 @@ class TestStepResume:
             summarize_calls.append(file)
             raise SummarizationError("simulated failure")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
-             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
-             patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", failing_summarize):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
+             patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", failing_summarize):
             run_pipeline(cfg)
 
         assert transcribe_calls == ["a.mp3"]
@@ -229,9 +229,9 @@ class TestStepResume:
             summarize_calls.append(file)
             return f"summary of {file}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
-             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
-             patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", ok_summarize):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", ok_postprocess), \
+             patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", ok_summarize):
             run_pipeline(cfg)
 
         assert transcribe_calls == ["a.mp3"]      # not re-run
@@ -255,9 +255,9 @@ class TestStepResume:
         def failing_postprocess(self, text: str, source_path: Path | None = None) -> str:
             raise PostProcessingError("simulated failure")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
              patch(
-                 "whispercrawl.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
+                 "asr_crawler.pipeline.postprocessor.PostProcessor.process", failing_postprocess,
              ):
             run_pipeline(cfg)
         assert transcribe_calls == ["a.mp3"]
@@ -270,8 +270,8 @@ class TestStepResume:
         def ok_postprocess(self, text: str, source_path: Path | None = None) -> str:
             return f"fixed {text}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
-             patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe), \
+             patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", ok_postprocess):
             run_pipeline(cfg)
 
         assert transcribe_calls == ["a.mp3", "a.mp3"]  # re-transcribed, not resumed
@@ -289,6 +289,6 @@ class TestStateAlwaysOn:
 
     def test_dry_run_creates_no_db(self, tmp_path: Path):
         _make_files(tmp_path, ["a.mp3"])
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "t"):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "t"):
             run_pipeline(_config(tmp_path), dry_run=True)
         assert not (tmp_path / "db").exists()

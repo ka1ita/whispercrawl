@@ -4,6 +4,33 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-057: Rename Project to asr-crawler
+
+_Pure rename, no behaviour change — mirrors EPIC-020. `whispercrawl` /
+`WhisperCrawl` → `asr-crawler` (dist name, CLI command, Docker image, compose
+service, log file) and `asr_crawler` (import package — underscore). The legacy
+`.whispercrawl` on-disk state dirname in `state.py` / `.gitignore` stays; the repo
+directory and historical `epics/` + `ADR-` files are out of scope. See
+[epics/EPIC-057-rename-to-asr-crawler.md](../epics/EPIC-057-rename-to-asr-crawler.md)._
+
+- [x] `git mv src/whispercrawl src/asr_crawler`; rewrite all `from whispercrawl.` / `import whispercrawl` → `asr_crawler` in `src/`; update product-name strings in docstrings/log lines/comments (left `LEGACY_STATE_DIRNAME = ".whispercrawl"` and its `state.py` docstring reference) (EPIC-057, 2026-09-03)
+- [x] `pyproject.toml`: `[project].name` → `asr-crawler`; `[project.scripts]` → `asr-crawler = "asr_crawler.main:main"`; wheel `packages` → `["src/asr_crawler"]` (EPIC-057, 2026-09-03)
+- [x] `uv.lock`: renamed the editable `name = "whispercrawl"` package entry to `asr-crawler` and moved it into alphabetical order (no `uv` on this machine — hand-edited) (EPIC-057, 2026-09-03)
+- [x] `main.py`: argparse `prog="asr-crawler"` + description; `--errors` failure hint string → `asr-crawler` (EPIC-057, 2026-09-03)
+- [x] `Dockerfile`: `COPY … /usr/local/bin/asr-crawler` and `ENTRYPOINT ["asr-crawler", …]` (EPIC-057, 2026-09-03)
+- [x] Compose files (dev, services, prod, prod-local): service key `whispercrawl:` → `asr-crawler:`, `image: asr-crawler:latest`, header comments (no `container_name` / whispercrawl-named volumes existed) (EPIC-057, 2026-09-03)
+- [x] Deploy scripts (`deploy/dev/*.sh`, `deploy/prod/setup.sh` + `service-cleanup.sh`, `deploy/prod-local/setup.sh`): image / service / `docker save|load` refs → `asr-crawler`; `python -m whispercrawl` → `python -m asr_crawler`; system user/group `whispercrawl` → `asr-crawler` (EPIC-057, 2026-09-03)
+- [x] `deploy/prod/.env.example`, `deploy/prod-local/.env.example`: container-name comment → `asr-crawler` (EPIC-057, 2026-09-03)
+- [x] All four `config.yaml`: header comment, `asr-crawler --refresh|--errors|--cleanup` usage comments, `logging.app_log_file` default → `…/asr-crawler.log` (kept `.whispercrawl/state.db` legacy-path comment) (EPIC-057, 2026-09-03)
+- [x] `.claude/settings.json`: permission entry `from whispercrawl.config import …` → `asr_crawler` (EPIC-057, 2026-09-03)
+- [x] `tests/`: rewrote all imports + `mocker.patch` target strings → `asr_crawler` (kept the two `.whispercrawl` legacy-dir test paths); no test asserted on prog/log-filename/image name (EPIC-057, 2026-09-03)
+- [x] Docs: `CLAUDE.md`, `README.md`, `docs/architecture/overview.md`, `docs/api/whisper-asr-webservice.md` → `asr-crawler` / `asr_crawler` (kept `.whispercrawl` legacy paths; kept the `github.com/ka1ita/whispercrawl.git` clone URL + `cd whispercrawl` — repo/remote rename is an operator action, out of scope) (EPIC-057, 2026-09-03)
+- [x] Verify: `pip install -e ".[dev]"` + `python -m asr_crawler --help`; `pytest` 477 green; `docker compose … config` resolves for all four compose files (dev app service = `asr-crawler`); `python -m asr_crawler --config deploy/dev/config.yaml --once --dry-run` loads clean (EPIC-057, 2026-09-03)
+- [x] Regression: `tests/test_state.py` pre-EPIC-043 `<watch_dir>/.whispercrawl/state.db` migration tests still green (EPIC-057, 2026-09-03)
+- [ ] Pre-existing `ruff check` / `ruff format` debt (~210 findings from ruff 0.15 vs the `ruff>=0.4` pin — `typing.List`, `X | None`, E501) is **not** addressed here; the rename added none. Bump the `ruff` pin + autofix in a separate cleanup.
+
+---
+
 ## EPIC-056: Concurrent Multi-Engine Transcription
 
 _Depends on EPIC-048 (landed). Parallelises the per-file `for eng in engines`

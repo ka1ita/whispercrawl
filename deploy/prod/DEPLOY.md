@@ -1,4 +1,4 @@
-﻿# Production Deployment — whispercrawl
+﻿# Production Deployment — asr-crawler
 
 This directory is the complete production deployment bundle. Transfer it to the target host and follow the steps below.
 
@@ -15,7 +15,7 @@ On the **build host** (internet-connected), export the image:
 bash deploy/dev/docker-export-prod.sh
 ```
 
-This places `whispercrawl.tar` in `deploy/prod/dist/`. Transfer the entire `deploy/prod/` directory to the target host, then run setup:
+This places `asr-crawler.tar` in `deploy/prod/dist/`. Transfer the entire `deploy/prod/` directory to the target host, then run setup:
 
 ```bash
 cd /path/to/deploy/prod
@@ -27,9 +27,9 @@ sudo bash setup.sh
 When run interactively, `setup.sh` prompts for the install directory (default: wherever `setup.sh` lives — press Enter to accept). To skip the prompt, pass it explicitly or set `INSTALL_DIR`:
 
 ```bash
-bash setup.sh /opt/whispercrawl
+bash setup.sh /opt/asr-crawler
 # or
-INSTALL_DIR=/opt/whispercrawl bash setup.sh
+INSTALL_DIR=/opt/asr-crawler bash setup.sh
 ```
 
 Bind mounts are labeled `:Z` in `docker-compose.prod.yml` for SELinux-enforcing hosts (e.g. RedOS 8); this is a no-op where SELinux isn't active.
@@ -51,7 +51,7 @@ vi config.yaml
 ## 3. Verify (dry run)
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm whispercrawl --once --dry-run
+docker compose -f docker-compose.prod.yml run --rm asr-crawler --once --dry-run
 ```
 
 No API calls are made — it only logs the files that would be processed.
@@ -61,7 +61,7 @@ No API calls are made — it only logs the files that would be processed.
 ## 4. Run once
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm whispercrawl --once
+docker compose -f docker-compose.prod.yml run --rm asr-crawler --once
 ```
 
 ---
@@ -105,10 +105,10 @@ single-file form.
 
 ```bash
 # Config is mounted read-only — restart picks up changes
-docker compose -f docker-compose.prod.yml restart whispercrawl
+docker compose -f docker-compose.prod.yml restart asr-crawler
 
 # Full recreate (after image update)
-docker compose -f docker-compose.prod.yml up -d --force-recreate whispercrawl
+docker compose -f docker-compose.prod.yml up -d --force-recreate asr-crawler
 ```
 
 ---
@@ -117,16 +117,16 @@ docker compose -f docker-compose.prod.yml up -d --force-recreate whispercrawl
 
 ```bash
 # Tail live logs
-docker compose -f docker-compose.prod.yml logs -f whispercrawl
+docker compose -f docker-compose.prod.yml logs -f asr-crawler
 
 # Last 100 lines
-docker compose -f docker-compose.prod.yml logs --tail=100 whispercrawl
+docker compose -f docker-compose.prod.yml logs --tail=100 asr-crawler
 
 # Container status
 docker compose -f docker-compose.prod.yml ps
 
 # Application log file
-tail -f logs/whispercrawl.log
+tail -f logs/asr-crawler.log
 
 # Structured service request log
 tail -f logs/service_requests.ndjson
@@ -136,7 +136,7 @@ tail -f logs/service_requests.ndjson
 
 ## Processing index
 
-`whispercrawl` keeps a persisted index of processed files at `db/state.db`
+`asr-crawler` keeps a persisted index of processed files at `db/state.db`
 (SQLite; mounted into the container at `/db`). It lets each scheduled run skip files it has
 already handled without re-scanning the whole tree, and lets an interrupted run resume where
 it left off. `setup.sh` creates and `chown`s the `db/` directory.
@@ -153,7 +153,7 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   post-processed text. This makes the DB larger but enables:
 
   ```bash
-  docker compose -f docker-compose.prod.yml run --rm whispercrawl --refresh
+  docker compose -f docker-compose.prod.yml run --rm asr-crawler --refresh
   ```
 
   `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
@@ -165,7 +165,7 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   it records the error in the index. List outstanding failures with:
 
   ```bash
-  docker compose -f docker-compose.prod.yml run --rm whispercrawl --errors
+  docker compose -f docker-compose.prod.yml run --rm asr-crawler --errors
   ```
 
   It prints each failure grouped by path and **exits non-zero** when any are outstanding (zero when
@@ -179,7 +179,7 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
 
 ```text
 deploy/prod/
-  dist/               ← whispercrawl.tar (transfer from build host)
+  dist/               ← asr-crawler.tar (transfer from build host)
   audio/              ← mount point for audio/video files (created by setup.sh)
   db/state.db         ← persisted processing index (auto-created; safe to delete)
   logs/               ← mount point for log output (created by setup.sh)
@@ -190,6 +190,6 @@ deploy/prod/
   setup.sh            ← first-run setup (create dirs, load image, fix ownership/permissions)
   service-start.sh    ← docker compose up -d
   service-down.sh     ← docker compose down
-  service-cleanup.sh  ← docker compose run --rm whispercrawl --once --cleanup
+  service-cleanup.sh  ← docker compose run --rm asr-crawler --once --cleanup
   DEPLOY.md           ← this file
 ```

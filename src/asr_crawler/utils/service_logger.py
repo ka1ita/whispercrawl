@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO, Any, Optional
 
-from whispercrawl.config import LoggingConfig
+from asr_crawler.config import LoggingConfig
 
 logger = logging.getLogger(__name__)
 

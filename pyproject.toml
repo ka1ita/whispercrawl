@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "whispercrawl"
+name = "asr-crawler"
 version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.scripts]
-whispercrawl = "whispercrawl.main:main"
+asr-crawler = "asr_crawler.main:main"
 
 [project.optional-dependencies]
 dev = [
@@ -23,7 +23,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/whispercrawl"]
+packages = ["src/asr_crawler"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

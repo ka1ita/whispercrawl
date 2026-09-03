@@ -1,4 +1,4 @@
-# WhisperCrawl  configuration
+# asr-crawler configuration
 # Adjust for your environment.
 
 # Directory to scan for audio/video files (recursive)
@@ -36,10 +36,10 @@ skip_marker: _skip
 # tree every run. Deleting the file is safe: the next run re-derives it from existing
 # output files (no reprocessing). The index also stores each file's raw ASR transcript
 # and post-processed text, which powers:
-#   whispercrawl --refresh  — re-run post-processing, summarization, and formatting from
+#   asr-crawler --refresh  — re-run post-processing, summarization, and formatting from
 #                             the stored transcript with the current config, no whisper call.
 # Failures are recorded here too (nothing is written beside the audio):
-#   whispercrawl --errors   — list what failed and why; exits non-zero if anything is outstanding.
+#   asr-crawler --errors   — list what failed and why; exits non-zero if anything is outstanding.
 # state:
 #   path: /db/state.db     # override the default location (<config dir>/db/state.db)
 #   # (a legacy /audio/.whispercrawl/state.db is moved here automatically on first run)
@@ -165,7 +165,7 @@ dir_summarization:
   # concat_suffix / output_suffix: deprecated no-ops since EPIC-047
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────
-# `whispercrawl --cleanup` (alone, or with `--once`) deletes the consolidated
+# `asr-crawler --cleanup` (alone, or with `--once`) deletes the consolidated
 # result files this version writes — <file>.<ext> and _<dirname>.<ext>, one set
 # per ASR engine, any formatter extension — and empties the processing index.
 # It is not configurable. Pre-047 sidecars (_fix/_sum/_all/_concat) and _err.txt
@@ -176,7 +176,7 @@ dir_summarization:
 # ── Logging ───────────────────────────────────────────────────────────────────
 logging:
   # Application log (console + optional rotating file)
-  app_log_file: ${LOGS_DIR:./logs}/whispercrawl.log   # omit to log to console only
+  app_log_file: ${LOGS_DIR:./logs}/asr-crawler.log   # omit to log to console only
   app_log_level: INFO                      # DEBUG | INFO | WARNING | ERROR
   app_log_max_bytes: 10485760              # 10 MB per file
   app_log_backup_count: 5                  # number of rotated backups to keep

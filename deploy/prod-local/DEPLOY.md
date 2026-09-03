@@ -1,6 +1,6 @@
-# Production Deployment — whispercrawl (all-in-one, single server)
+# Production Deployment — asr-crawler (all-in-one, single server)
 
-This bundle runs **whisper-asr-webservice**, **ollama**, and **whispercrawl** on a single host using Docker Compose. No internet access is required on the target host after initial setup.
+This bundle runs **whisper-asr-webservice**, **ollama**, and **asr-crawler** on a single host using Docker Compose. No internet access is required on the target host after initial setup.
 
 **Prerequisite:** Docker and Docker Compose must be installed on the target host.
 
@@ -14,11 +14,11 @@ On the **build host** (internet-connected), from the repository root:
 bash deploy/dev/docker-export-prod.sh
 ```
 
-This builds `whispercrawl:latest`, then pulls and exports all three images into both `deploy/prod/dist/` and `deploy/prod-local/dist/`:
+This builds `asr-crawler:latest`, then pulls and exports all three images into both `deploy/prod/dist/` and `deploy/prod-local/dist/`:
 
 | File | Image |
 |---|---|
-| `whispercrawl.tar` | whispercrawl:latest |
+| `asr-crawler.tar` | asr-crawler:latest |
 | `asr-webservice.tar` | asr-webservice:latest (mirrored from onerahmet/openai-whisper-asr-webservice:latest) |
 | `ollama.tar` | ollama/ollama:latest |
 
@@ -33,9 +33,9 @@ the `asr-webservice` service will pull it instead of loading `asr-webservice.tar
 Transfer the entire `deploy/prod-local/` directory to the target host:
 
 ```bash
-rsync -av deploy/prod-local/ user@host:/opt/whispercrawl/
+rsync -av deploy/prod-local/ user@host:/opt/asr-crawler/
 # or
-scp -r deploy/prod-local/ user@host:/opt/whispercrawl/
+scp -r deploy/prod-local/ user@host:/opt/asr-crawler/
 ```
 
 ---
@@ -43,7 +43,7 @@ scp -r deploy/prod-local/ user@host:/opt/whispercrawl/
 ## 3. Run setup
 
 ```bash
-cd /opt/whispercrawl
+cd /opt/asr-crawler
 sudo bash setup.sh
 ```
 
@@ -52,14 +52,14 @@ sudo bash setup.sh
 - Copy `.env.example` → `.env` (if `.env` does not yet exist)
 - Create `audio/`, `logs/`, and `db/` directories
 - Load all three Docker images from `dist/`
-- When run as root: create a system user/group matching the `whispercrawl` container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown` `audio/`, `logs/`, `db/`, and `config.yaml` to it, so the non-root container can read/write the mounted paths. If not run as root, it prints the exact `sudo` commands to run manually instead.
+- When run as root: create a system user/group matching the `asr-crawler` container's `appuser` (uid/gid `1000` by default, see `APP_UID`/`APP_GID` in `.env`) and `chown` `audio/`, `logs/`, `db/`, and `config.yaml` to it, so the non-root container can read/write the mounted paths. If not run as root, it prints the exact `sudo` commands to run manually instead.
 
 When run interactively, `setup.sh` prompts for the install directory (default: wherever `setup.sh` lives — press Enter to accept). To skip the prompt, pass it explicitly or set `INSTALL_DIR`:
 
 ```bash
-bash setup.sh /opt/whispercrawl
+bash setup.sh /opt/asr-crawler
 # or
-INSTALL_DIR=/opt/whispercrawl bash setup.sh
+INSTALL_DIR=/opt/asr-crawler bash setup.sh
 ```
 
 Bind mounts are labeled `:Z` in `docker-compose.prod-local.yml` for SELinux-enforcing hosts (e.g. RedOS 8); this is a no-op where SELinux isn't active.
@@ -87,7 +87,7 @@ Key `.env` values:
 
 ## 5. Pull the ollama model (first run)
 
-The ollama container needs at least one model before whispercrawl can use it. This step requires internet access on the target host (or a pre-seeded `ollama_data` Docker volume):
+The ollama container needs at least one model before asr-crawler can use it. This step requires internet access on the target host (or a pre-seeded `ollama_data` Docker volume):
 
 ```bash
 # Start just ollama first
@@ -102,7 +102,7 @@ docker compose -f docker-compose.prod-local.yml exec ollama ollama pull gemma3:1
 ## 6. Verify (dry run)
 
 ```bash
-docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --dry-run
+docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --once --dry-run
 ```
 
 No API calls are made — it only logs the files that would be processed.
@@ -112,7 +112,7 @@ No API calls are made — it only logs the files that would be processed.
 ## 7. Run once
 
 ```bash
-docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once
+docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --once
 ```
 
 ---
@@ -137,10 +137,10 @@ formatter extension) and empties the processing index, without touching source
 audio. It is not configurable — there is no `cleanup:` section:
 
 ```bash
-docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup
+docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --once --cleanup
 
 # Dry run — shows what would be deleted
-docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --once --cleanup --dry-run
+docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --once --cleanup --dry-run
 ```
 
 **Upgrading a pre-EPIC-047/049 catalog:** `--cleanup` no longer sweeps the old
@@ -155,10 +155,10 @@ single-file form.
 
 ```bash
 # Config is mounted read-only — restart picks up changes
-docker compose -f docker-compose.prod-local.yml restart whispercrawl
+docker compose -f docker-compose.prod-local.yml restart asr-crawler
 
 # Full recreate (after image update)
-docker compose -f docker-compose.prod-local.yml up -d --force-recreate whispercrawl
+docker compose -f docker-compose.prod-local.yml up -d --force-recreate asr-crawler
 ```
 
 ---
@@ -169,14 +169,14 @@ docker compose -f docker-compose.prod-local.yml up -d --force-recreate whispercr
 # Tail live logs (all services)
 docker compose -f docker-compose.prod-local.yml logs -f
 
-# whispercrawl only
-docker compose -f docker-compose.prod-local.yml logs -f whispercrawl
+# asr-crawler only
+docker compose -f docker-compose.prod-local.yml logs -f asr-crawler
 
 # Container status
 docker compose -f docker-compose.prod-local.yml ps
 
 # Application log file
-tail -f logs/whispercrawl.log
+tail -f logs/asr-crawler.log
 
 # Structured service request log
 tail -f logs/service_requests.ndjson
@@ -186,7 +186,7 @@ tail -f logs/service_requests.ndjson
 
 ## Processing index
 
-`whispercrawl` keeps a persisted index of processed files at `db/state.db`
+`asr-crawler` keeps a persisted index of processed files at `db/state.db`
 (SQLite; mounted into the container at `/db`). It lets each scheduled run skip files it has
 already handled without re-scanning the whole tree, and lets an interrupted run resume where
 it left off. `setup.sh` creates and `chown`s the `db/` directory.
@@ -203,7 +203,7 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   post-processed text, enabling:
 
   ```bash
-  docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --refresh
+  docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --refresh
   ```
 
   `--refresh` re-runs post-processing, summarization, and formatting for every already-processed
@@ -215,7 +215,7 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   `<file>_err.txt` beside the audio. List outstanding failures with:
 
   ```bash
-  docker compose -f docker-compose.prod-local.yml run --rm whispercrawl --errors
+  docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --errors
   ```
 
   It prints each failure grouped by path and **exits non-zero** when any are outstanding — suitable

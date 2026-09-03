@@ -1,8 +1,8 @@
 """Unit tests for the result composer (EPIC-047)."""
 from __future__ import annotations
 
-from whispercrawl.config import ResultConfig
-from whispercrawl.pipeline.composer import compose
+from asr_crawler.config import ResultConfig
+from asr_crawler.pipeline.composer import compose
 
 HEADINGS = {"summary": "Резюме", "transcript": "Транскрипция"}
 

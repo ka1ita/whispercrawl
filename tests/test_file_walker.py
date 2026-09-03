@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from whispercrawl.file_walker import detect_language, iter_media_files
-from whispercrawl.state import ProcessingState
+from asr_crawler.file_walker import detect_language, iter_media_files
+from asr_crawler.state import ProcessingState
 
 EXTENSIONS = [".mp3", ".wav", ".mp4"]
 

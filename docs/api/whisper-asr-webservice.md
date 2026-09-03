@@ -38,7 +38,7 @@ is ignored for them and transcripts carry no `[SPEAKER_XX]` labels.
 
 `transcription.engines` in `config.yaml` is a list of engine configs — each one
 maps to a single `/asr` service (its own `url`, `language`, `diarize`, params).
-whispercrawl calls every configured engine for every file and keeps their
+asr-crawler calls every configured engine for every file and keeps their
 outputs separate (`<file>_<name>.<ext>`, `_<dirname>_<name>.<ext>`, and separate
 processing-index rows). It does not use any multi-model feature of a single
 service — run one `whisper-asr-webservice` per engine.

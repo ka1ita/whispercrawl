@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -16,7 +16,7 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
+from asr_crawler.main import run_pipeline
 
 
 def _config(tmp_path: Path, *, fmt: str = "txt") -> Config:
@@ -42,7 +42,7 @@ def _normal_run(cfg: Config, transcript: str = "[SPEAKER_00]: hello world") -> l
         calls.append(path.name)
         return transcript
 
-    with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake_transcribe):
+    with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake_transcribe):
         run_pipeline(cfg)
     return calls
 
@@ -57,7 +57,7 @@ def test_refresh_does_not_call_transcriber(tmp_path: Path):
         refresh_calls.append(path.name)
         raise AssertionError("transcriber must not be called during --refresh")
 
-    with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", boom):
+    with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", boom):
         run_pipeline(_config(tmp_path), refresh=True)
 
     assert refresh_calls == []
@@ -70,7 +70,7 @@ def test_refresh_regenerates_output_with_new_format(tmp_path: Path):
     assert (tmp_path / "rec.txt").exists()
 
     with patch(
-        "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
         run_pipeline(_config(tmp_path, fmt="md"), refresh=True)
@@ -84,7 +84,7 @@ def test_refresh_skips_file_without_stored_text(tmp_path: Path):
     (tmp_path / "rec.mp3").write_bytes(b"\x00")  # never transcribed
 
     with patch(
-        "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
         run_pipeline(_config(tmp_path), refresh=True)
@@ -98,7 +98,7 @@ def test_normal_run_after_refresh_skips_the_file(tmp_path: Path):
     _normal_run(_config(tmp_path))
 
     with patch(
-        "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
         run_pipeline(_config(tmp_path), refresh=True)
@@ -109,7 +109,7 @@ def test_normal_run_after_refresh_skips_the_file(tmp_path: Path):
         later_calls.append(path.name)
         return "x"
 
-    with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fake):
+    with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fake):
         run_pipeline(_config(tmp_path))
 
     assert later_calls == []
@@ -120,7 +120,7 @@ def test_refresh_with_no_stored_text_skips_file(tmp_path: Path):
     (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
     with patch(
-        "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
         run_pipeline(_config(tmp_path), refresh=True)
@@ -129,15 +129,15 @@ def test_refresh_with_no_stored_text_skips_file(tmp_path: Path):
 
 
 def test_normal_run_populates_text_columns(tmp_path: Path):
-    from whispercrawl.state import ProcessingState
+    from asr_crawler.state import ProcessingState
 
     rec = tmp_path / "rec.mp3"
     rec.write_bytes(b"\x00")
     cfg = _config(tmp_path)
     cfg.postprocessing = OllamaStepConfig(llm_enabled=True, regex_enabled=False, output_suffix="_fix")
     with (
-        patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "raw asr"),
-        patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", lambda self, t, source_path=None: "fixed asr"),
+        patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "raw asr"),
+        patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", lambda self, t, source_path=None: "fixed asr"),
     ):
         run_pipeline(cfg)
 
@@ -156,7 +156,7 @@ def test_changed_source_between_runs_is_skipped_by_refresh(tmp_path: Path):
     rec.write_bytes(b"\x00\x01\x02")  # mtime + size change
 
     with patch(
-        "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
         lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
     ):
         run_pipeline(_config(tmp_path, fmt="md"), refresh=True)
@@ -180,12 +180,12 @@ def test_per_step_and_per_file_refresh_produce_identical_output(tmp_path: Path):
         root.mkdir()
         cfg = _build(root, mode)
         with patch(
-            "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+            "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
             lambda self, p: transcripts[p.name],
         ):
             run_pipeline(cfg)
         with patch(
-            "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+            "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
             lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe")),
         ):
             run_pipeline(cfg, refresh=True)
@@ -204,9 +204,9 @@ def test_refresh_reruns_postprocess_and_summary(tmp_path: Path):
     cfg.file_summarization = OllamaStepConfig(llm_enabled=True, output_suffix="_sum")
 
     with (
-        patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "raw text"),
-        patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", lambda self, t, source_path=None: "fixed v1"),
-        patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", lambda self, t, file="": "sum v1"),
+        patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "raw text"),
+        patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", lambda self, t, source_path=None: "fixed v1"),
+        patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", lambda self, t, file="": "sum v1"),
     ):
         run_pipeline(cfg)
 
@@ -214,11 +214,11 @@ def test_refresh_reruns_postprocess_and_summary(tmp_path: Path):
     sum_calls: list[str] = []
 
     with (
-        patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe",
               lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe"))),
-        patch("whispercrawl.pipeline.postprocessor.PostProcessor.process",
+        patch("asr_crawler.pipeline.postprocessor.PostProcessor.process",
               lambda self, t, source_path=None: pp_calls.append(t) or "fixed v2"),
-        patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file",
+        patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file",
               lambda self, t, file="": sum_calls.append(file) or "sum v2"),
     ):
         run_pipeline(cfg, refresh=True)

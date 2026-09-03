@@ -7,7 +7,7 @@ the ``html`` formatter renders them as ``<h1>``…; ``txt`` keeps them literal.
 """
 from __future__ import annotations
 
-from whispercrawl.config import ResultConfig
+from asr_crawler.config import ResultConfig
 
 KNOWN_SECTIONS = ("summary", "transcript")
 

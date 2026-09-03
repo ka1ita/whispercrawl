@@ -2,7 +2,7 @@
 configurable (EPIC-052 / EPIC-053)."""
 from pathlib import Path
 
-from whispercrawl.pipeline.cleaner import Cleaner
+from asr_crawler.pipeline.cleaner import Cleaner
 
 
 def _result(audio: Path, ext=".txt", label="") -> Path:

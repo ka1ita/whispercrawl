@@ -1,4 +1,4 @@
-﻿# whispercrawl
+﻿# asr-crawler
 
 Batch audio/video transcription pipeline powered by [whisper-asr-webservice](https://github.com/ahmetoner/whisper-asr-webservice) and [Ollama](https://ollama.com).
 
@@ -49,7 +49,7 @@ mkdir -p audio logs
 docker compose -f deploy/dev/docker-compose.dev.yml up -d
 ```
 
-This starts two whisper-asr-webservice instances (`asr-webservice` on port 9000 running `whisperx`, `asr-webservice2` on 9001 running `gigaam`/`v1_rnnt` — a second ASR engine for comparison, EPIC-054), Ollama, and whispercrawl in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
+This starts two whisper-asr-webservice instances (`asr-webservice` on port 9000 running `whisperx`, `asr-webservice2` on 9001 running `gigaam`/`v1_rnnt` — a second ASR engine for comparison, EPIC-054), Ollama, and asr-crawler in Docker. The stack uses `deploy/dev/config.yaml`, which pre-wires both engines. Pull the LLM model before first use:
 
 ```bash
 docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
@@ -100,22 +100,22 @@ file_summarization:
 
 ```bash
 # Process all files once and exit
-python -m whispercrawl --config config.yaml --once
+python -m asr_crawler --config config.yaml --once
 
 # Dry-run: list files that would be processed, no API calls
-python -m whispercrawl --config config.yaml --once --dry-run
+python -m asr_crawler --config config.yaml --once --dry-run
 
 # Run on a schedule (uses schedule.interval / schedule.cron from config)
-python -m whispercrawl --config config.yaml
+python -m asr_crawler --config config.yaml
 
 # Delete all generated output files
-python -m whispercrawl --config config.yaml --once --cleanup
+python -m asr_crawler --config config.yaml --once --cleanup
 ```
 
-If `whispercrawl` is on your PATH after `pip install -e .`:
+If `asr-crawler` is on your PATH after `pip install -e .`:
 
 ```bash
-whispercrawl --config config.yaml --once
+asr-crawler --config config.yaml --once
 ```
 
 ---
@@ -200,18 +200,18 @@ Two compose configurations are provided — pick the one that matches your envir
 ### Directory layout
 
 ```text
-Dockerfile                              # whispercrawl image (multi-stage, non-root)
+Dockerfile                              # asr-crawler image (multi-stage, non-root)
 deploy/
   dev/
     .env.example                        # environment variable template (copy to .env here)
     config.yaml                         # dev config — two ASR engines wired (asr-webservice :9000, asr-webservice2 :9001)
-    docker-compose.dev.yml              # all services in Docker (asr-webservice x2, ollama, whispercrawl)
-    docker-compose.services.yml         # asr-webservice x2 + ollama only (run whispercrawl locally)
+    docker-compose.dev.yml              # all services in Docker (asr-webservice x2, ollama, asr-crawler)
+    docker-compose.services.yml         # asr-webservice x2 + ollama only (run asr-crawler locally)
     app-docker-start.sh / app-docker-stop.sh / docker-rebuild-app.sh # full stack in Docker
-    app-python.sh / app-python-once.sh / app-python-cleanup.sh   # whispercrawl locally via Python
+    app-python.sh / app-python-once.sh / app-python-cleanup.sh   # asr-crawler locally via Python
     services-docker-start.sh / services-docker-stop.sh / services-docker-restart.sh / docker-rebuild-services.sh   # asr-webservice + ollama only
   prod/
-    docker-compose.prod.yml             # whispercrawl only — URLs from environment variables
+    docker-compose.prod.yml             # asr-crawler only — URLs from environment variables
     setup.sh / service-start.sh / service-down.sh
     DEPLOY.md                           # production deployment guide
 deploy/dev/docker-export-prod.sh         # build + export image to deploy/prod/dist/
@@ -237,10 +237,10 @@ docker compose -f deploy/dev/docker-compose.dev.yml up -d
 docker compose -f deploy/dev/docker-compose.dev.yml exec ollama ollama pull gemma3:1b
 
 # run once
-docker compose -f deploy/dev/docker-compose.dev.yml run --rm whispercrawl --once
+docker compose -f deploy/dev/docker-compose.dev.yml run --rm asr-crawler --once
 
-# rebuild whispercrawl image after changing src/ or pyproject.toml
-docker compose -f deploy/dev/docker-compose.dev.yml up -d --build whispercrawl
+# rebuild asr-crawler image after changing src/ or pyproject.toml
+docker compose -f deploy/dev/docker-compose.dev.yml up -d --build asr-crawler
 ```
 
 ---
@@ -263,7 +263,7 @@ On an internet-connected machine (run from the repo root):
 
 ```bash
 bash deploy/dev/docker-export-prod.sh
-# builds whispercrawl:latest, exports to deploy/prod/dist/
+# builds asr-crawler:latest, exports to deploy/prod/dist/
 # also copies config.yaml into deploy/prod/
 ```
 

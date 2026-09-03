@@ -10,8 +10,8 @@ from typing import Optional
 
 import httpx
 
-from whispercrawl.config import TranscriptionConfig
-from whispercrawl.file_walker import detect_language
+from asr_crawler.config import TranscriptionConfig
+from asr_crawler.file_walker import detect_language
 
 logger = logging.getLogger(__name__)
 

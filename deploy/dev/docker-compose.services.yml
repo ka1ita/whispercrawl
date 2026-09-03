@@ -1,6 +1,6 @@
 version: "3.9"
 
-# Whisper (x2) + Ollama only — use when running WhisperCrawl locally (python -m whispercrawl).
+# Whisper (x2) + Ollama only — use when running asr-crawler locally (python -m asr_crawler).
 # Services are exposed on localhost so deploy/dev/config.yaml defaults
 # (127.0.0.1:9000 / 127.0.0.1:9001 / localhost:11434) work as-is.
 #

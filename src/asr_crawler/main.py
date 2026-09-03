@@ -1,4 +1,4 @@
-"""CLI entry point for whispercrawl."""
+"""CLI entry point for asr-crawler."""
 from __future__ import annotations
 
 import argparse
@@ -7,8 +7,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from whispercrawl.config import Config, engine_label, load_config
-from whispercrawl.utils.logging_setup import setup_logging
+from asr_crawler.config import Config, engine_label, load_config
+from asr_crawler.utils.logging_setup import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ def render_output(text: str, fmt: str) -> str:
 def run_errors(config: Config) -> int:
     """Print failures recorded in the processing index. Returns a process exit
     code: non-zero when at least one error is outstanding, zero otherwise."""
-    from whispercrawl.state import ProcessingState, default_state_path
+    from asr_crawler.state import ProcessingState, default_state_path
 
     state_path = config.state.path or default_state_path(config.watch_dir)
     if not Path(state_path).exists():
@@ -128,12 +128,12 @@ def run_cleanup(config: Config, dry_run: bool = False) -> None:
             for ext in _result_exts:
                 _rm(dir_path / (dir_prefix + dir_path.name + label + ext))
 
-    from whispercrawl.state import default_state_path
+    from asr_crawler.state import default_state_path
     state_path = config.state.path or default_state_path(config.watch_dir)
     if dry_run:
         logger.info("Would clear processing index: %s", state_path)
     elif Path(state_path).exists():
-        from whispercrawl.state import ProcessingState
+        from asr_crawler.state import ProcessingState
         with ProcessingState.open(state_path) as st:
             st.clear()
         logger.info("Cleared processing index: %s", state_path)
@@ -151,7 +151,7 @@ def run_pipeline(
     per-directory concat/summary, format) from the transcript text stored in the
     processing index — no whisper call.
     """
-    from whispercrawl.state import NullState, open_state
+    from asr_crawler.state import NullState, open_state
 
     if dry_run:
         state = NullState()
@@ -166,14 +166,14 @@ def run_pipeline(
 
 
 def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: bool = False) -> None:
-    from whispercrawl.file_walker import iter_media_files
-    from whispercrawl.pipeline.cleaner import Cleaner
-    from whispercrawl.pipeline.composer import compose
-    from whispercrawl.pipeline.formatter import Formatter
-    from whispercrawl.pipeline.postprocessor import PostProcessor, PostProcessingError
-    from whispercrawl.pipeline.summarizer import Summarizer, SummarizationError
-    from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
-    from whispercrawl.utils.service_logger import ServiceLogger
+    from asr_crawler.file_walker import iter_media_files
+    from asr_crawler.pipeline.cleaner import Cleaner
+    from asr_crawler.pipeline.composer import compose
+    from asr_crawler.pipeline.formatter import Formatter
+    from asr_crawler.pipeline.postprocessor import PostProcessor, PostProcessingError
+    from asr_crawler.pipeline.summarizer import Summarizer, SummarizationError
+    from asr_crawler.pipeline.transcriber import Transcriber, TranscriptionError
+    from asr_crawler.utils.service_logger import ServiceLogger
 
     # Failures are recorded in the processing index (an ``errors`` row +
     # status='error'); nothing is written beside the audio. On ``--dry-run``
@@ -692,7 +692,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             n_dirs = sum(1 for e in outstanding if e.scope == "dir")
             logger.warning(
                 "%d file(s) and %d directory step(s) finished with errors; "
-                "run 'whispercrawl --errors' for details",
+                "run 'asr-crawler --errors' for details",
                 n_files, n_dirs,
             )
 
@@ -710,7 +710,9 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="whispercrawl — audio/video transcription pipeline")
+    parser = argparse.ArgumentParser(
+        prog="asr-crawler", description="asr-crawler — audio/video transcription pipeline"
+    )
     parser.add_argument("--config", type=Path, default=Path("config.yaml"), help="Path to config file")
     parser.add_argument("--once", action="store_true", help="Run once and exit")
     parser.add_argument("--dry-run", action="store_true", help="Log files that would be processed without processing them")
@@ -747,7 +749,7 @@ def main() -> None:
         run_pipeline(config, dry_run=args.dry_run, cleanup=args.cleanup)
         return
 
-    from whispercrawl.scheduler import start_scheduler
+    from asr_crawler.scheduler import start_scheduler
     start_scheduler(config)
 
 

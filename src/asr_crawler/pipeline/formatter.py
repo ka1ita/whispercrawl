@@ -5,7 +5,7 @@ import re
 from html import escape
 from pathlib import Path
 
-# Matches whispercrawl's speaker lines in all three shapes the transcriber emits:
+# Matches asr-crawler's speaker lines in all three shapes the transcriber emits:
 #   [SPEAKER_00]: text           (speaker_timestamps off)
 #   [SPEAKER_00 00:00:01] text   (speaker_timestamps on, with a start time)
 #   [SPEAKER_00] text            (speaker_timestamps on, no start time)

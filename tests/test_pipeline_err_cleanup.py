@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     LoggingConfig,
@@ -13,8 +13,8 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
-from whispercrawl.state import ProcessingState
+from asr_crawler.main import run_pipeline
+from asr_crawler.state import ProcessingState
 
 
 def _ok_response(text: str = "transcribed") -> MagicMock:
@@ -64,7 +64,7 @@ class TestPerFileErrors:
     def test_no_sidecar_and_row_cleared_after_full_success(self, tmp_path):
         (tmp_path / "meeting.mp3").touch()
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response()):
             run_pipeline(_config(tmp_path))
 
         assert not (tmp_path / "meeting_err.txt").exists()
@@ -72,14 +72,14 @@ class TestPerFileErrors:
         assert _errors(tmp_path) == []
 
     def test_postprocessing_failure_records_row_no_sidecar(self, tmp_path):
-        from whispercrawl.pipeline.postprocessor import PostProcessingError
+        from asr_crawler.pipeline.postprocessor import PostProcessingError
 
         (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                "asr_crawler.pipeline.postprocessor.PostProcessor.process",
                 side_effect=PostProcessingError("boom"),
             ),
         ):
@@ -91,14 +91,14 @@ class TestPerFileErrors:
         assert rows[0].scope == "file"
 
     def test_file_summarization_failure_records_row(self, tmp_path):
-        from whispercrawl.pipeline.summarizer import SummarizationError
+        from asr_crawler.pipeline.summarizer import SummarizationError
 
         (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.summarizer.Summarizer.summarize_file",
+                "asr_crawler.pipeline.summarizer.Summarizer.summarize_file",
                 side_effect=SummarizationError("boom"),
             ),
         ):
@@ -110,22 +110,22 @@ class TestPerFileErrors:
     def test_transcription_failure_records_row(self, tmp_path):
         (tmp_path / "meeting.mp3").touch()
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_err_response()):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_err_response()):
             run_pipeline(_config(tmp_path))
 
         assert not (tmp_path / "meeting_err.txt").exists()
         assert [r.step for r in _errors(tmp_path, "meeting.mp3")] == ["transcribe"]
 
     def test_fixing_the_failure_clears_the_row(self, tmp_path):
-        from whispercrawl.pipeline.postprocessor import PostProcessingError
+        from asr_crawler.pipeline.postprocessor import PostProcessingError
 
         (tmp_path / "meeting.mp3").touch()
         cfg = _config(tmp_path, postprocessing=True)
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                "asr_crawler.pipeline.postprocessor.PostProcessor.process",
                 side_effect=PostProcessingError("boom"),
             ),
         ):
@@ -133,8 +133,8 @@ class TestPerFileErrors:
         assert _errors(tmp_path, "meeting.mp3")
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", return_value="fixed"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", return_value="fixed"),
         ):
             run_pipeline(cfg)
 
@@ -147,7 +147,7 @@ class TestOnceCleanup:
     def test_success_then_cleanup_removes_the_result(self, tmp_path):
         (tmp_path / "meeting.mp3").touch()
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response()):
             run_pipeline(_config(tmp_path), cleanup=True)
 
         # --once --cleanup deletes the result it just produced (success gate met).
@@ -155,14 +155,14 @@ class TestOnceCleanup:
         assert _errors(tmp_path) == []
 
     def test_failed_file_has_nothing_to_clean_and_no_sidecar(self, tmp_path):
-        from whispercrawl.pipeline.postprocessor import PostProcessingError
+        from asr_crawler.pipeline.postprocessor import PostProcessingError
 
         (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.postprocessor.PostProcessor.process",
+                "asr_crawler.pipeline.postprocessor.PostProcessor.process",
                 side_effect=PostProcessingError("boom"),
             ),
         ):
@@ -178,8 +178,8 @@ class TestDirErrors:
         (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="dir summary"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", return_value="dir summary"),
         ):
             run_pipeline(_config(tmp_path, dir_summarization=True))
 
@@ -187,14 +187,14 @@ class TestDirErrors:
         assert _errors(tmp_path) == []
 
     def test_dir_summary_failure_records_dir_scoped_row(self, tmp_path):
-        from whispercrawl.pipeline.summarizer import SummarizationError
+        from asr_crawler.pipeline.summarizer import SummarizationError
 
         (tmp_path / "meeting.mp3").touch()
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"),
             patch(
-                "whispercrawl.pipeline.summarizer.Summarizer.concat_transcriptions",
+                "asr_crawler.pipeline.summarizer.Summarizer.concat_transcriptions",
                 side_effect=SummarizationError("dir failed"),
             ),
         ):

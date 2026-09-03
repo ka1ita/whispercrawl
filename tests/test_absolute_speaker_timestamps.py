@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import OllamaStepConfig
-from whispercrawl.pipeline.postprocessor import PostProcessor
+from asr_crawler.config import OllamaStepConfig
+from asr_crawler.pipeline.postprocessor import PostProcessor
 
 
 def _pp(fmt: "str | list[str] | None" = None) -> PostProcessor:

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -18,9 +18,9 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
-from whispercrawl.pipeline.transcriber import TranscriptionError
-from whispercrawl.state import ProcessingState
+from asr_crawler.main import run_pipeline
+from asr_crawler.pipeline.transcriber import TranscriptionError
+from asr_crawler.state import ProcessingState
 
 
 def _config(tmp_path: Path, engine_names, *, concurrency=1, fmt="txt",
@@ -55,15 +55,15 @@ def _by_engine(self, path: Path) -> str:
 class TestSequentialWhenConcurrencyIsOne:
     def test_no_thread_pool_constructed(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.main.ThreadPoolExecutor") as pool, \
-             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.main.ThreadPoolExecutor") as pool, \
+             patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(_config(tmp_path, ["a", "b"], concurrency=1))
         pool.assert_not_called()
 
     def test_single_engine_never_uses_pool(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.main.ThreadPoolExecutor") as pool, \
-             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        with patch("asr_crawler.main.ThreadPoolExecutor") as pool, \
+             patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe",
                    lambda self, p: "plain"):
             cfg = _config(tmp_path, [], concurrency=8)
             cfg.transcription.engines = [TranscriptionConfig(name="", diarize=False)]
@@ -79,7 +79,7 @@ class TestOutputIdenticalAcrossConcurrency:
         d.mkdir()
         for n in ("a", "b", "c"):
             (d / f"{n}.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(_config(d, ["x", "y"], concurrency=concurrency, mode=mode))
         results = {
             p.name.replace(dname, "<d>"): p.read_text(encoding="utf-8")
@@ -107,7 +107,7 @@ class TestParallelism:
             time.sleep(delay)
             return f"{self.config.name}::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", slow):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", slow):
             start = time.monotonic()
             run_pipeline(_config(tmp_path, ["a", "b", "c"], concurrency=3))
             elapsed = time.monotonic() - start
@@ -132,7 +132,7 @@ class TestParallelism:
                 state["cur"] -= 1
             return f"{self.config.name}::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", tracked):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", tracked):
             run_pipeline(_config(tmp_path, ["x", "y"], concurrency=3, mode="per_step"))
 
         assert state["max"] <= 3
@@ -148,7 +148,7 @@ class TestFailureIsolationUnderThreading:
                 raise TranscriptionError("boom")
             return f"a::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fail_b):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fail_b):
             run_pipeline(_config(tmp_path, ["a", "b"], concurrency=2, rescan=False))
 
         assert (tmp_path / "rec_a.txt").read_text(encoding="utf-8") == "a::rec.mp3"
@@ -165,7 +165,7 @@ class TestFailureIsolationUnderThreading:
                 raise RuntimeError("unexpected")
             return f"a::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", fail_b):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", fail_b):
             run_pipeline(_config(tmp_path, ["a", "b"], concurrency=2, rescan=False))
 
         assert (tmp_path / "rec_a.txt").exists()
@@ -183,7 +183,7 @@ class TestInterrupt:
                 raise KeyboardInterrupt
             return f"a::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", boom):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", boom):
             with pytest.raises(KeyboardInterrupt):
                 run_pipeline(_config(tmp_path, ["a", "b"], concurrency=2, rescan=False))
 
@@ -195,14 +195,14 @@ class TestRefreshIgnoresConcurrency:
     def test_refresh_does_not_construct_a_pool(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         cfg = _config(tmp_path, ["a", "b"], concurrency=4, rescan=False)
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(cfg)
 
         def boom(self, p):
             raise AssertionError("must not transcribe during --refresh")
 
-        with patch("whispercrawl.main.ThreadPoolExecutor") as pool, \
-             patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", boom):
+        with patch("asr_crawler.main.ThreadPoolExecutor") as pool, \
+             patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", boom):
             run_pipeline(cfg, refresh=True)
         pool.assert_not_called()
         assert (tmp_path / "rec_a.txt").exists()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the full dev stack: asr-webservice, ollama, and WhisperCrawl  — all in Docker.
+# Start the full dev stack: asr-webservice, ollama, and asr-crawler  — all in Docker.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

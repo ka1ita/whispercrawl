@@ -9,4 +9,4 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-docker compose -f docker-compose.prod.yml run --rm whispercrawl --once --cleanup "$@"
+docker compose -f docker-compose.prod.yml run --rm asr-crawler --once --cleanup "$@"

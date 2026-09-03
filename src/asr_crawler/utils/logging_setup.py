@@ -5,7 +5,7 @@ import logging
 import logging.handlers
 from pathlib import Path
 
-from whispercrawl.config import LoggingConfig
+from asr_crawler.config import LoggingConfig
 
 _FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 

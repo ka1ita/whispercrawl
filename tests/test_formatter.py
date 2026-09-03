@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from whispercrawl.pipeline.formatter import Formatter
+from asr_crawler.pipeline.formatter import Formatter
 
 
 class TestFormatterTxt:

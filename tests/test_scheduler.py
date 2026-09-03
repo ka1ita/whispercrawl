@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config, DirSummarizationConfig, LoggingConfig,
     OllamaStepConfig, ScheduleConfig, TranscriptionConfig,
 )
-from whispercrawl.scheduler import start_scheduler
+from asr_crawler.scheduler import start_scheduler
 
 
 def _config(tmp_path: Path, schedule: ScheduleConfig) -> Config:
@@ -42,9 +42,9 @@ class TestImmediateFirstRun:
         mock_scheduler.start.side_effect = fake_start
 
         with (
-            patch("whispercrawl.scheduler.run_pipeline", side_effect=fake_run_pipeline),
-            patch("whispercrawl.scheduler.BlockingScheduler", return_value=mock_scheduler),
-            patch("whispercrawl.scheduler.signal.signal"),
+            patch("asr_crawler.scheduler.run_pipeline", side_effect=fake_run_pipeline),
+            patch("asr_crawler.scheduler.BlockingScheduler", return_value=mock_scheduler),
+            patch("asr_crawler.scheduler.signal.signal"),
         ):
             start_scheduler(cfg)
 

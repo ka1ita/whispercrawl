@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from whispercrawl.config import load_config
+from asr_crawler.config import load_config
 
 
 def _write(tmp_path: Path, body: str) -> Path:

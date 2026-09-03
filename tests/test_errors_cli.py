@@ -3,15 +3,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     FormatterConfig,
     LoggingConfig,
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_errors
-from whispercrawl.state import ProcessingState
+from asr_crawler.main import run_errors
+from asr_crawler.state import ProcessingState
 
 
 def _config(tmp_path: Path) -> Config:

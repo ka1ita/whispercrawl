@@ -204,7 +204,7 @@ def load_config(path: Path) -> Config:
 
     _epic_047 = "EPIC-047 (one consolidated result file per audio file / per directory)"
     _epic_052_err = (
-        "EPIC-052 (failures are recorded in the processing index; run 'whispercrawl --errors')"
+        "EPIC-052 (failures are recorded in the processing index; run 'asr-crawler --errors')"
     )
     for _sect, _fld, _since in (
         ("postprocessing", "replace_transcription", _epic_047),
@@ -258,7 +258,7 @@ def load_config(path: Path) -> Config:
 
     state_cfg = _build(StateConfig, raw.get("state", {}) or {})
     if state_cfg.path is None:
-        from whispercrawl.state import default_state_path
+        from asr_crawler.state import default_state_path
         state_cfg.path = default_state_path(Path(path).resolve().parent)
 
     max_files_per_run = raw.get("max_files_per_run")

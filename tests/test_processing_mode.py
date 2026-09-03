@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -17,13 +17,13 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
-from whispercrawl.pipeline.postprocessor import PostProcessingError
-from whispercrawl.pipeline.transcriber import TranscriptionError
+from asr_crawler.main import run_pipeline
+from asr_crawler.pipeline.postprocessor import PostProcessingError
+from asr_crawler.pipeline.transcriber import TranscriptionError
 
 
 def _has_error(tmp_path: Path, rel: str) -> bool:
-    from whispercrawl.state import ProcessingState
+    from asr_crawler.state import ProcessingState
 
     with ProcessingState.open(tmp_path / "db" / "state.db") as st:
         return bool(st.get_errors(rel))
@@ -87,9 +87,9 @@ def _ok_summarize(calls: list):
 
 def _patches(transcribe=None, postprocess=None, summarize=None):
     return (
-        patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", transcribe),
-        patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", postprocess),
-        patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", summarize),
+        patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", transcribe),
+        patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", postprocess),
+        patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", summarize),
     )
 
 

@@ -32,27 +32,27 @@ echo "==> Creating runtime directories ..."
 mkdir -p audio logs db
 chmod 750 audio logs db
 
-echo "==> Loading whispercrawl Docker image ..."
-if [[ ! -f dist/whispercrawl.tar ]]; then
-  echo "ERROR: dist/whispercrawl.tar not found." >&2
+echo "==> Loading asr-crawler Docker image ..."
+if [[ ! -f dist/asr-crawler.tar ]]; then
+  echo "ERROR: dist/asr-crawler.tar not found." >&2
   echo "       Transfer it to this directory before running setup." >&2
   exit 1
 fi
-docker load -i dist/whispercrawl.tar
+docker load -i dist/asr-crawler.tar
 
 echo "==> Setting up docker-volume ownership (uid=$APP_UID gid=$APP_GID) ..."
 if [[ "$(id -u)" -eq 0 ]]; then
   if getent group "$APP_GID" >/dev/null 2>&1; then
     GROUP_NAME="$(getent group "$APP_GID" | cut -d: -f1)"
   else
-    groupadd -r -g "$APP_GID" whispercrawl
-    GROUP_NAME="whispercrawl"
+    groupadd -r -g "$APP_GID" asr-crawler
+    GROUP_NAME="asr-crawler"
   fi
   if getent passwd "$APP_UID" >/dev/null 2>&1; then
     echo "    UID $APP_UID already assigned to $(getent passwd "$APP_UID" | cut -d: -f1); reusing it."
   else
-    useradd -r -u "$APP_UID" -g "$GROUP_NAME" -s /usr/sbin/nologin -M whispercrawl
-    echo "    Created system user 'whispercrawl' (uid=$APP_UID gid=$APP_GID)."
+    useradd -r -u "$APP_UID" -g "$GROUP_NAME" -s /usr/sbin/nologin -M asr-crawler
+    echo "    Created system user 'asr-crawler' (uid=$APP_UID gid=$APP_GID)."
   fi
   chown -R "$APP_UID:$APP_GID" audio logs db
   if [[ -f config.yaml ]]; then
@@ -64,8 +64,8 @@ else
   echo "    The container runs as uid=$APP_UID gid=$APP_GID. Run this manually so it can" >&2
   echo "    read/write the mounted directories:" >&2
   echo "" >&2
-  echo "      sudo groupadd -r -g $APP_GID whispercrawl 2>/dev/null || true" >&2
-  echo "      sudo useradd -r -u $APP_UID -g $APP_GID -s /usr/sbin/nologin -M whispercrawl 2>/dev/null || true" >&2
+  echo "      sudo groupadd -r -g $APP_GID asr-crawler 2>/dev/null || true" >&2
+  echo "      sudo useradd -r -u $APP_UID -g $APP_GID -s /usr/sbin/nologin -M asr-crawler 2>/dev/null || true" >&2
   echo "      sudo chown -R $APP_UID:$APP_GID \"$INSTALL_DIR/audio\" \"$INSTALL_DIR/logs\" \"$INSTALL_DIR/db\"" >&2
   echo "      sudo chown root:$APP_GID \"$INSTALL_DIR/config.yaml\" && sudo chmod 640 \"$INSTALL_DIR/config.yaml\"" >&2
 fi
@@ -80,4 +80,4 @@ echo ""
 echo "  3. bash service-start.sh"
 echo ""
 echo "  To verify before starting the service:"
-echo "     docker compose -f docker-compose.prod.yml run --rm whispercrawl --once --dry-run"
+echo "     docker compose -f docker-compose.prod.yml run --rm asr-crawler --once --dry-run"

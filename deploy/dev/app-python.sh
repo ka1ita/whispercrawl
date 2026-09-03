@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run WhisperCrawl locally via Python against the dev two-engine config.
+# Run asr-crawler locally via Python against the dev two-engine config.
 # Start the ASR services first: ./deploy/dev/services-docker-start.sh
 #   (asr-webservice :9000 and asr-webservice2 :9001, ollama :11434 — all on localhost, so the
 #    deploy/dev/config.yaml URL defaults work as-is).
@@ -18,4 +18,4 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 #echo ""
 
 cd "$REPO_ROOT"
-exec python -m whispercrawl --config deploy/dev/config.yaml "$@"
+exec python -m asr_crawler --config deploy/dev/config.yaml "$@"

@@ -5,11 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config, DirSummarizationConfig, LoggingConfig, OllamaStepConfig,
     ScheduleConfig, TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
+from asr_crawler.main import run_pipeline
 
 
 def _config(tmp_path: Path) -> Config:
@@ -41,7 +41,7 @@ class TestDryRun:
     def test_makes_no_http_calls(self, tmp_path):
         (tmp_path / "a.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post") as mock_post:
+        with patch("asr_crawler.pipeline.transcriber.httpx.post") as mock_post:
             run_pipeline(_config(tmp_path), dry_run=True)
 
         mock_post.assert_not_called()

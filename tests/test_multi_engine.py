@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -14,9 +14,9 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_cleanup, run_pipeline
-from whispercrawl.pipeline.transcriber import TranscriptionError
-from whispercrawl.state import ProcessingState
+from asr_crawler.main import run_cleanup, run_pipeline
+from asr_crawler.pipeline.transcriber import TranscriptionError
+from asr_crawler.state import ProcessingState
 
 
 def _config(tmp_path: Path, engine_names, *, fmt="txt", mode="per_file",
@@ -57,7 +57,7 @@ def _fail_b(self, path: Path) -> str:
 class TestTwoEngines:
     def test_one_result_per_engine_per_file_and_dir(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(_config(tmp_path, ["wx", "fw"]))
 
         assert (tmp_path / "rec_wx.txt").read_text(encoding="utf-8") == "wx::rec.mp3"
@@ -69,7 +69,7 @@ class TestTwoEngines:
 
     def test_index_stores_text_per_engine(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(_config(tmp_path, ["wx", "fw"], rescan=False))
 
         st = (tmp_path / "rec.mp3").stat()
@@ -79,7 +79,7 @@ class TestTwoEngines:
 
     def test_single_unnamed_engine_output_is_unlabelled(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "plain"):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", lambda self, p: "plain"):
             run_pipeline(_config(tmp_path, []))
         assert (tmp_path / "rec.txt").read_text(encoding="utf-8") == "plain"
 
@@ -87,7 +87,7 @@ class TestTwoEngines:
 class TestEngineFailureIsolation:
     def test_one_engine_failure_does_not_block_the_other(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _fail_b):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _fail_b):
             run_pipeline(_config(tmp_path, ["a", "b"], rescan=False))
 
         assert (tmp_path / "rec_a.txt").exists()
@@ -101,7 +101,7 @@ class TestEngineFailureIsolation:
     def test_next_run_retries_only_the_failed_engine(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         cfg = _config(tmp_path, ["a", "b"], rescan=False)
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _fail_b):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _fail_b):
             run_pipeline(cfg)
 
         calls: list[str] = []
@@ -110,7 +110,7 @@ class TestEngineFailureIsolation:
             calls.append(self.config.name)
             return f"{self.config.name}::{path.name}"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", ok):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", ok):
             run_pipeline(cfg)
 
         assert calls == ["b"]  # engine a resumed from the index
@@ -124,13 +124,13 @@ class TestRefreshPerEngine:
     def test_refresh_regenerates_each_engine_without_transcribing(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         cfg = _config(tmp_path, ["a", "b"], fmt="md", rescan=False)
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(cfg)
 
         def boom(self, p):
             raise AssertionError("must not transcribe during --refresh")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", boom):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", boom):
             run_pipeline(cfg, refresh=True)
 
         assert (tmp_path / "rec_a.md").exists()
@@ -139,11 +139,11 @@ class TestRefreshPerEngine:
     def test_refresh_skips_engine_without_stored_text(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         # only engine "a" ever ran
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe",
                    lambda self, p: "a text" if self.config.name == "a" else (_ for _ in ()).throw(TranscriptionError("x"))):
             run_pipeline(_config(tmp_path, ["a", "b"], rescan=False))
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe",
                    lambda self, p: (_ for _ in ()).throw(AssertionError("no transcribe"))):
             run_pipeline(_config(tmp_path, ["a", "b"], rescan=False), refresh=True)
 
@@ -160,7 +160,7 @@ class TestPerStepEqualsPerFile:
             d.mkdir()
             (d / "a.mp3").write_bytes(b"\x00")
             (d / "b.mp3").write_bytes(b"\x00")
-            with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+            with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
                 run_pipeline(_config(d, ["x", "y"], mode=mode))
             outputs[mode] = {
                 p.name.replace(mode, "<d>"): p.read_text(encoding="utf-8")
@@ -173,7 +173,7 @@ class TestCleanupPerEngine:
     def test_cleanup_removes_every_engine_result(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         cfg = _config(tmp_path, ["a", "b"])
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", _by_engine):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", _by_engine):
             run_pipeline(cfg)
         assert (tmp_path / "rec_a.txt").exists()
 

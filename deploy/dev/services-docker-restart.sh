@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Restart whisper-asr-webservice and Ollama (external services only).
-# Use this when running WhisperCrawl locally (not in Docker).
+# Use this when running asr-crawler locally (not in Docker).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

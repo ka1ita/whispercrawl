@@ -7,7 +7,7 @@ from typing import Optional
 
 import httpx
 
-from whispercrawl.config import OllamaStepConfig
+from asr_crawler.config import OllamaStepConfig
 
 
 class SummarizationError(Exception):

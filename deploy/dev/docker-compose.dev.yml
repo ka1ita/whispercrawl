@@ -1,18 +1,18 @@
 version: "3.9"
 
 # Dev — everything in Docker.
-# WhisperCrawl connects to asr-webservice and ollama via internal Docker network.
+# asr-crawler connects to asr-webservice and ollama via internal Docker network.
 #
 # Usage:
 #   docker compose -f deploy/dev/docker-compose.dev.yml up -d
-#   docker compose -f deploy/dev/docker-compose.dev.yml run --rm whispercrawl --once
+#   docker compose -f deploy/dev/docker-compose.dev.yml run --rm asr-crawler --once
 #
-# After changing src/ or pyproject.toml, rebuild the whispercrawl image:
-#   docker compose -f deploy/dev/docker-compose.dev.yml up -d --build whispercrawl
+# After changing src/ or pyproject.toml, rebuild the asr-crawler image:
+#   docker compose -f deploy/dev/docker-compose.dev.yml up -d --build asr-crawler
 #
 # Config: edit deploy/dev/config.yaml — the dev config, which pre-wires two ASR
 #   engines (EPIC-054). Service URLs and paths are injected via environment
-#   variables (see the whispercrawl.environment block below); no manual edits needed.
+#   variables (see the asr-crawler.environment block below); no manual edits needed.
 
 services:
 
@@ -78,7 +78,7 @@ services:
         condition: service_healthy
     restart: "no"
 
-  whispercrawl:
+  asr-crawler:
     build:
       context: ../..
       dockerfile: Dockerfile

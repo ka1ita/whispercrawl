@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -20,8 +20,8 @@ from whispercrawl.config import (
     StateConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
-from whispercrawl.state import ProcessingState
+from asr_crawler.main import run_pipeline
+from asr_crawler.state import ProcessingState
 
 
 def _ok_response(text: str = "transcribed") -> MagicMock:
@@ -73,8 +73,8 @@ class TestTranscribeCrashIsContained:
             return real_open(path, *args, **kwargs)
 
         with (
-            patch("whispercrawl.pipeline.transcriber.open", fake_open, create=True),
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response()),
+            patch("asr_crawler.pipeline.transcriber.open", fake_open, create=True),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response()),
         ):
             run_pipeline(_config(tmp_path))  # must not raise
 
@@ -94,7 +94,7 @@ class TestTranscribeCrashIsContained:
                 raise RuntimeError("something completely unexpected")
             return "transcript b"
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", transcribe):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", transcribe):
             run_pipeline(_config(tmp_path))
 
         assert [r.step for r in _errors(tmp_path, "a.mp3")] == ["transcribe"]
@@ -114,7 +114,7 @@ class TestFinalizeCrashIsContained:
             return real_write(self, *args, **kwargs)
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
             patch.object(Path, "write_text", fake_write),
         ):
             run_pipeline(_config(tmp_path))
@@ -130,7 +130,7 @@ class TestFormatCrashIsContained:
         (tmp_path / "a.mp3").touch()
         (tmp_path / "b.mp3").touch()
 
-        from whispercrawl.pipeline.formatter import Formatter
+        from asr_crawler.pipeline.formatter import Formatter
 
         real_format = Formatter.format_file
 
@@ -140,7 +140,7 @@ class TestFormatCrashIsContained:
             return real_format(self, path)
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
             patch.object(Formatter, "format_file", fake_format),
         ):
             run_pipeline(_config(tmp_path, fmt="md"))
@@ -159,7 +159,7 @@ class TestDirLoopCrashIsContained:
         (d1 / "x.mp3").touch()
         (d2 / "y.mp3").touch()
 
-        from whispercrawl.pipeline.summarizer import Summarizer
+        from asr_crawler.pipeline.summarizer import Summarizer
 
         real_concat = Summarizer.concat_transcriptions
 
@@ -169,7 +169,7 @@ class TestDirLoopCrashIsContained:
             return real_concat(self, selected)
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="t"),
             patch.object(Summarizer, "concat_transcriptions", fake_concat),
         ):
             run_pipeline(_config(tmp_path))
@@ -185,7 +185,7 @@ class TestKeyboardInterruptStillPropagates:
         (tmp_path / "a.mp3").touch()
 
         with patch(
-            "whispercrawl.pipeline.transcriber.Transcriber.transcribe",
+            "asr_crawler.pipeline.transcriber.Transcriber.transcribe",
             side_effect=KeyboardInterrupt,
         ):
             with pytest.raises(KeyboardInterrupt):

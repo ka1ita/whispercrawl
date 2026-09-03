@@ -1,7 +1,7 @@
 version: "3.9"
 
-# Production — WhisperCrawl only; connects to external whisper-asr-webservice and Ollama.
-# Copy this bundle to /opt/whispercrawl on the target host and run bash setup.sh first.
+# Production — asr-crawler only; connects to external whisper-asr-webservice and Ollama.
+# Copy this bundle to /opt/asr-crawler on the target host and run bash setup.sh first.
 #
 # Required: set ASR_WEBSERVICE_URL and OLLAMA_URL in .env (copy from .env.example).
 #
@@ -12,8 +12,8 @@ version: "3.9"
 
 services:
 
-  whispercrawl:
-    image: whispercrawl:latest
+  asr-crawler:
+    image: asr-crawler:latest
     environment:
       WATCH_DIR: /audio
       ASR_WEBSERVICE_URL: ${ASR_WEBSERVICE_URL} # http://asr-webservice:9000

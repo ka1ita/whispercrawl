@@ -6,8 +6,8 @@ import signal
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from whispercrawl.config import Config
-from whispercrawl.main import run_pipeline
+from asr_crawler.config import Config
+from asr_crawler.main import run_pipeline
 
 logger = logging.getLogger(__name__)
 

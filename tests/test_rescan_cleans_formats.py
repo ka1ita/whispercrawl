@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -15,8 +15,8 @@ from whispercrawl.config import (
     ScheduleConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
-from whispercrawl.pipeline.cleaner import Cleaner
+from asr_crawler.main import run_pipeline
+from asr_crawler.pipeline.cleaner import Cleaner
 
 
 def _config(tmp_path: Path, fmt: str, rescan: bool = True) -> Config:
@@ -48,7 +48,7 @@ class TestRescanCleansOtherFormats:
         stale = tmp_path / f"rec{stale_ext}"
         stale.write_text("old output")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"):
             run_pipeline(_config(tmp_path, current_fmt))
 
         assert not stale.exists()
@@ -65,7 +65,7 @@ class TestRescanFalseDoesNotClean:
         stale = tmp_path / f"rec{stale_ext}"
         stale.write_text("old output")
 
-        with patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"):
+        with patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="transcript"):
             run_pipeline(_config(tmp_path, current_fmt, rescan=False))
 
         assert stale.exists()

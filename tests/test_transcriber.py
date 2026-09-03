@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from whispercrawl.config import TranscriptionConfig
-from whispercrawl.pipeline.transcriber import Transcriber, TranscriptionError
+from asr_crawler.config import TranscriptionConfig
+from asr_crawler.pipeline.transcriber import Transcriber, TranscriptionError
 
 
 def _config(**kwargs) -> TranscriptionConfig:

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     LoggingConfig,
@@ -17,7 +17,7 @@ from whispercrawl.config import (
     ScheduleConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
+from asr_crawler.main import run_pipeline
 
 
 def _config(tmp_path: Path, replace_transcription: bool = False) -> Config:
@@ -56,7 +56,7 @@ def _make_postprocessor(response=FIXED):
 
 
 def _make_postprocessor_failing(exc):
-    from whispercrawl.pipeline.postprocessor import PostProcessingError
+    from asr_crawler.pipeline.postprocessor import PostProcessingError
     inst = MagicMock()
     inst.process.side_effect = PostProcessingError(exc)
     return MagicMock(return_value=inst)
@@ -72,9 +72,9 @@ def _svc_logger_patch():
 
 def _run(cfg, transcriber_cls, postprocessor_cls):
     with (
-        patch("whispercrawl.pipeline.transcriber.Transcriber", transcriber_cls),
-        patch("whispercrawl.pipeline.postprocessor.PostProcessor", postprocessor_cls),
-        patch("whispercrawl.utils.service_logger.ServiceLogger", _svc_logger_patch()),
+        patch("asr_crawler.pipeline.transcriber.Transcriber", transcriber_cls),
+        patch("asr_crawler.pipeline.postprocessor.PostProcessor", postprocessor_cls),
+        patch("asr_crawler.utils.service_logger.ServiceLogger", _svc_logger_patch()),
     ):
         run_pipeline(cfg)
 
@@ -95,7 +95,7 @@ class TestConsolidatedResult:
         assert not (tmp_path / "a_err.txt").exists()  # no sidecar (EPIC-049)
         assert not (tmp_path / "a.txt").exists()  # a failed step → no consolidated result
 
-        from whispercrawl.state import ProcessingState
+        from asr_crawler.state import ProcessingState
 
         with ProcessingState.open(tmp_path / "db" / "state.db") as st:
             errs = st.get_errors("a.mp3")
@@ -120,7 +120,7 @@ class TestReplaceTranscriptionDeprecated:
             "postprocessing:\n  replace_transcription: true\n",
             encoding="utf-8",
         )
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
 
         with caplog.at_level(_logging.WARNING):
             load_config(p)

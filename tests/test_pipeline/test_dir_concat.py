@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -19,7 +19,7 @@ from whispercrawl.config import (
     ScheduleConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import run_pipeline
+from asr_crawler.main import run_pipeline
 
 
 def _ok_response(text: str = "ok") -> MagicMock:
@@ -65,7 +65,7 @@ class TestDirResultWritten:
     def test_result_written_as_txt(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
         result = _dir_result(tmp_path)
@@ -78,7 +78,7 @@ class TestDirResultWritten:
         (tmp_path / "a.mp3").write_bytes(b"\x00")
         (tmp_path / "b.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
         content = _dir_result(tmp_path).read_text(encoding="utf-8")
@@ -88,7 +88,7 @@ class TestDirResultWritten:
     def test_result_converted_to_html_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="html"))
 
         assert _dir_result(tmp_path, "html").exists()
@@ -97,7 +97,7 @@ class TestDirResultWritten:
     def test_result_converted_to_md_format(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("hello")):
             run_pipeline(_config(tmp_path, llm_enabled=False, fmt="md"))
 
         assert _dir_result(tmp_path, "md").exists()
@@ -107,8 +107,8 @@ class TestDirResultWritten:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
+            patch("asr_crawler.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True))
 
@@ -121,7 +121,7 @@ class TestUnderscorePrefix:
     def test_prefix_false_uses_dirname_only(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False, underscore_prefix=False))
 
         assert _dir_result(tmp_path).exists()
@@ -130,7 +130,7 @@ class TestUnderscorePrefix:
     def test_prefix_true_prepends_underscore(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")):
             run_pipeline(_config(tmp_path, llm_enabled=False, underscore_prefix=True))
 
         assert _dir_result(tmp_path, prefix="_").exists()
@@ -140,8 +140,8 @@ class TestUnderscorePrefix:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
+            patch("asr_crawler.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, underscore_prefix=True))
 
@@ -155,7 +155,7 @@ class TestLlmEnabledFlag:
     def test_llm_disabled_result_is_concat_only(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("body text")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("body text")):
             run_pipeline(_config(tmp_path, llm_enabled=False))
 
         content = _dir_result(tmp_path).read_text(encoding="utf-8")
@@ -168,8 +168,8 @@ class TestLlmEnabledFlag:
         # patch the pipeline methods directly — transcriber and summarizer share
         # the same httpx module, so patching httpx.post in both places collides
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="body text"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="the summary"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="body text"),
+            patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", return_value="the summary"),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True))
 
@@ -191,8 +191,8 @@ class TestLlmEnabledFlag:
             return "dir summary"
 
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="raw transcript"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", side_effect=capture_summarize),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="raw transcript"),
+            patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", side_effect=capture_summarize),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True))
 
@@ -206,7 +206,7 @@ class TestConcatSource:
     def test_original_source_uses_transcript(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("original transcript")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("original transcript")):
             run_pipeline(_config(tmp_path, llm_enabled=False, concat_source="original"))
 
         content = _dir_result(tmp_path).read_text(encoding="utf-8")
@@ -215,7 +215,7 @@ class TestConcatSource:
     def test_postprocessed_falls_back_to_transcript_when_no_postprocessor(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
-        with patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("raw")):
+        with patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("raw")):
             run_pipeline(_config(tmp_path, llm_enabled=False, concat_source="postprocessed"))
 
         content = _dir_result(tmp_path).read_text(encoding="utf-8")
@@ -227,8 +227,8 @@ class TestSummaryFormatterIntegration:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
+            patch("asr_crawler.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, fmt="md"))
 
@@ -239,8 +239,8 @@ class TestSummaryFormatterIntegration:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_ok_response("text")),
+            patch("asr_crawler.pipeline.summarizer.httpx.post", return_value=_ok_response("summary")),
         ):
             run_pipeline(_config(tmp_path, llm_enabled=True, fmt="html"))
 

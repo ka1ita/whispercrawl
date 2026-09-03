@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Generator, List, Optional
 
-from whispercrawl.state import LEGACY_STATE_DIRNAME, STATE_DIRNAME, State
+from asr_crawler.state import LEGACY_STATE_DIRNAME, STATE_DIRNAME, State
 
 logger = logging.getLogger(__name__)
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# docker-export-prod.sh — build whispercrawl image, pull dependency images, and export.
+# docker-export-prod.sh — build asr-crawler image, pull dependency images, and export.
 # Run from the repository root:
 #   bash deploy/dev/docker-export-prod.sh
 #
 # Output:
-#   deploy/prod/dist/whispercrawl.tar          (whispercrawl only)
-#   deploy/prod-local/dist/whispercrawl.tar     \
+#   deploy/prod/dist/asr-crawler.tar          (asr-crawler only)
+#   deploy/prod-local/dist/asr-crawler.tar     \
 #   deploy/prod-local/dist/asr-webservice.tar    > all-in-one bundle
 #   deploy/prod-local/dist/ollama.tar           /
 #   deploy/prod/config.yaml                    (current config snapshot)
@@ -20,9 +20,9 @@ PROD_LOCAL_DIST="$REPO_ROOT/deploy/prod-local/dist"
 
 mkdir -p "$PROD_DIST" "$PROD_LOCAL_DIST"
 
-# ── 1. Build whispercrawl ─────────────────────────────────────────────────────
-echo "==> Building whispercrawl:latest ..."
-docker build -t whispercrawl:latest "$REPO_ROOT"
+# ── 1. Build asr-crawler ─────────────────────────────────────────────────────
+echo "==> Building asr-crawler:latest ..."
+docker build -t asr-crawler:latest "$REPO_ROOT"
 
 # ── 2. Pull dependency images if not already present ─────────────────────────
 # ASR_SRC_IMAGE is what the (internet-connected) build host pulls; the project
@@ -47,13 +47,13 @@ docker tag "$ASR_SRC_IMAGE" "$ASR_IMAGE"
 
 # ── 3. Export images ──────────────────────────────────────────────────────────
 
-# deploy/prod — whispercrawl only (connects to external asr-webservice + ollama)
-echo "==> Saving whispercrawl:latest → deploy/prod/dist/whispercrawl.tar ..."
-docker save whispercrawl:latest -o "$PROD_DIST/whispercrawl.tar"
+# deploy/prod — asr-crawler only (connects to external asr-webservice + ollama)
+echo "==> Saving asr-crawler:latest → deploy/prod/dist/asr-crawler.tar ..."
+docker save asr-crawler:latest -o "$PROD_DIST/asr-crawler.tar"
 
 # deploy/prod-local — all three images (all-in-one bundle)
 declare -A LOCAL_IMAGES=(
-  ["whispercrawl.tar"]="whispercrawl:latest"
+  ["asr-crawler.tar"]="asr-crawler:latest"
   ["asr-webservice.tar"]="$ASR_IMAGE"
   ["ollama.tar"]="$OLLAMA_IMAGE"
 )
@@ -71,8 +71,8 @@ cp "$REPO_ROOT/config.yaml" "$REPO_ROOT/deploy/prod/config.yaml"
 echo ""
 echo "Done."
 echo ""
-echo "  deploy/prod/dist/       — whispercrawl.tar only (connects to external asr-webservice + ollama)"
-echo "  deploy/prod-local/dist/ — all three images (asr-webservice + ollama + whispercrawl)"
+echo "  deploy/prod/dist/       — asr-crawler.tar only (connects to external asr-webservice + ollama)"
+echo "  deploy/prod-local/dist/ — all three images (asr-webservice + ollama + asr-crawler)"
 echo ""
 echo "Transfer the appropriate deploy/ subdirectory to the target host,"
 echo "then run bash setup.sh."

@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import (
+from asr_crawler.config import (
     Config,
     DirSummarizationConfig,
     FormatterConfig,
@@ -15,7 +15,7 @@ from whispercrawl.config import (
     ScheduleConfig,
     TranscriptionConfig,
 )
-from whispercrawl.main import output_path, render_output, run_cleanup, run_pipeline
+from asr_crawler.main import output_path, render_output, run_cleanup, run_pipeline
 
 
 # ── output_path ───────────────────────────────────────────────────────────────
@@ -85,36 +85,36 @@ class TestFormatValidation:
         return p
 
     def test_txt_accepted(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         cfg = load_config(self._write_config(tmp_path, "txt"))
         assert cfg.formatter.format == "txt"
 
     def test_html_accepted(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         cfg = load_config(self._write_config(tmp_path, "html"))
         assert cfg.formatter.format == "html"
 
     def test_unknown_format_raises(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         with pytest.raises(ValueError, match="formatter.format"):
             load_config(self._write_config(tmp_path, "pdf"))
 
     def test_default_is_txt_when_absent(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         p = tmp_path / "config.yaml"
         p.write_text(f"watch_dir: {tmp_path}\nextensions: [.mp3]\n", encoding="utf-8")
         cfg = load_config(p)
         assert cfg.formatter.format == "txt"
 
     def test_enabled_defaults_to_true(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         p = tmp_path / "config.yaml"
         p.write_text(f"watch_dir: {tmp_path}\nextensions: [.mp3]\n", encoding="utf-8")
         cfg = load_config(p)
         assert cfg.formatter.enabled is True
 
     def test_enabled_can_be_set_false(self, tmp_path):
-        from whispercrawl.config import load_config
+        from asr_crawler.config import load_config
         p = tmp_path / "config.yaml"
         p.write_text(
             f"watch_dir: {tmp_path}\nextensions: [.mp3]\nformatter:\n  format: html\n  enabled: false\n",
@@ -147,7 +147,7 @@ class TestHtmlPipelineOutput:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript text"),
         ):
             run_pipeline(_html_config(tmp_path))
@@ -159,7 +159,7 @@ class TestHtmlPipelineOutput:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript text"),
         ):
             run_pipeline(_html_config(tmp_path))
@@ -172,7 +172,7 @@ class TestHtmlPipelineOutput:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("a < b & c > d"),
         ):
             run_pipeline(_html_config(tmp_path))
@@ -201,7 +201,7 @@ class TestFormatterDisabled:
             logging=LoggingConfig(),
         )
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript text"),
         ):
             run_pipeline(cfg)
@@ -272,7 +272,7 @@ class TestTxtPipelineOutput:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript text"),
         ):
             run_pipeline(_txt_config(tmp_path))
@@ -284,7 +284,7 @@ class TestTxtPipelineOutput:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
 
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript text"),
         ):
             run_pipeline(_txt_config(tmp_path))
@@ -312,9 +312,9 @@ class TestConsolidatedFileResult:
     def test_result_has_summary_then_transcript_and_no_sidecars(self, tmp_path):
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         with (
-            patch("whispercrawl.pipeline.transcriber.Transcriber.transcribe", return_value="[SPEAKER_00]: hello"),
-            patch("whispercrawl.pipeline.postprocessor.PostProcessor.process", return_value="[SPEAKER_00]: hello fixed"),
-            patch("whispercrawl.pipeline.summarizer.Summarizer.summarize_file", return_value="THE SUMMARY"),
+            patch("asr_crawler.pipeline.transcriber.Transcriber.transcribe", return_value="[SPEAKER_00]: hello"),
+            patch("asr_crawler.pipeline.postprocessor.PostProcessor.process", return_value="[SPEAKER_00]: hello fixed"),
+            patch("asr_crawler.pipeline.summarizer.Summarizer.summarize_file", return_value="THE SUMMARY"),
         ):
             run_pipeline(self._config(tmp_path))
 
@@ -331,7 +331,7 @@ class TestConsolidatedFileResult:
 class TestDirConcatUsesMemoryTexts:
     def test_concat_receives_in_memory_text_not_files(self, tmp_path):
         """concat_transcriptions works from passed dict and does not call ollama."""
-        from whispercrawl.pipeline.summarizer import Summarizer
+        from asr_crawler.pipeline.summarizer import Summarizer
 
         summarizer = Summarizer(DirSummarizationConfig(llm_enabled=True, output_suffix="_sum"))
         ollama_called = []
@@ -345,7 +345,7 @@ class TestDirConcatUsesMemoryTexts:
 
     def test_concat_ignores_files_on_disk(self, tmp_path):
         """Files on disk are irrelevant; only passed texts are concatenated."""
-        from whispercrawl.pipeline.summarizer import Summarizer
+        from asr_crawler.pipeline.summarizer import Summarizer
 
         (tmp_path / "rec_sum.txt").write_text("on disk text", encoding="utf-8")
 
@@ -384,8 +384,8 @@ class TestDirSumAfterFormatter:
     def _run(self, tmp_path: Path, fmt: str) -> None:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         with (
-            patch("whispercrawl.pipeline.transcriber.httpx.post", return_value=_mock_ok("transcript")),
-            patch("whispercrawl.pipeline.summarizer.httpx.post", return_value=_mock_ok("summary")),
+            patch("asr_crawler.pipeline.transcriber.httpx.post", return_value=_mock_ok("transcript")),
+            patch("asr_crawler.pipeline.summarizer.httpx.post", return_value=_mock_ok("summary")),
         ):
             run_pipeline(self._config(tmp_path, fmt))
 
@@ -417,7 +417,7 @@ class TestDirSumAfterFormatter:
 
 class TestConcatFilenameHeaders:
     def _summarizer(self):
-        from whispercrawl.pipeline.summarizer import Summarizer
+        from asr_crawler.pipeline.summarizer import Summarizer
         return Summarizer(DirSummarizationConfig(llm_enabled=False))
 
     def test_single_file_header_present(self):
@@ -449,7 +449,7 @@ class TestConcatFilenameHeaders:
         assert result == "a.mp3\n\ntext_a\n\n---\n\nb.mp3\n\ntext_b"
 
     def test_empty_dict_raises(self):
-        from whispercrawl.pipeline.summarizer import SummarizationError
+        from asr_crawler.pipeline.summarizer import SummarizationError
         with pytest.raises(SummarizationError):
             self._summarizer().concat_transcriptions({})
 
@@ -474,7 +474,7 @@ class TestConcatFormatterPass:
     def _run(self, tmp_path: Path, fmt: str) -> None:
         (tmp_path / "rec.mp3").write_bytes(b"\x00")
         with patch(
-            "whispercrawl.pipeline.transcriber.httpx.post",
+            "asr_crawler.pipeline.transcriber.httpx.post",
             return_value=_mock_ok("transcript"),
         ):
             run_pipeline(self._config(tmp_path, fmt))

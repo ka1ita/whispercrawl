@@ -3,8 +3,8 @@ import logging
 
 import pytest
 
-from whispercrawl.config import LoggingConfig
-from whispercrawl.utils.logging_setup import setup_logging
+from asr_crawler.config import LoggingConfig
+from asr_crawler.utils.logging_setup import setup_logging
 
 
 def _handler_types(logger):

@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from whispercrawl.config import OllamaStepConfig
-from whispercrawl.pipeline.postprocessor import PostProcessor
+from asr_crawler.config import OllamaStepConfig
+from asr_crawler.pipeline.postprocessor import PostProcessor
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ class TestOllamaIntegration:
         mock_response.status_code = 200
         mock_response.json.return_value = {"message": {"content": "Fixed text"}}
 
-        with patch("whispercrawl.pipeline.postprocessor.httpx.post", return_value=mock_response) as mock_post:
+        with patch("asr_crawler.pipeline.postprocessor.httpx.post", return_value=mock_response) as mock_post:
             result = proc.process("Raw text")
 
         assert result == "Fixed text"

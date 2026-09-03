@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS asr_results (
     PRIMARY KEY (path, engine, kind)
 );
 -- Pipeline failures per file / directory per engine per step (EPIC-049).
--- Replaces the ``<file>_err.txt`` sidecar; read back with ``whispercrawl
+-- Replaces the ``<file>_err.txt`` sidecar; read back with ``asr-crawler
 -- --errors``. ``scope='dir'`` rows key ``path`` to a directory (relative to
 -- watch_dir) and leave ``mtime`` / ``size`` NULL.
 CREATE TABLE IF NOT EXISTS errors (

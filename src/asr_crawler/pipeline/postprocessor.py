@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import httpx
 
-from whispercrawl.config import OllamaStepConfig
+from asr_crawler.config import OllamaStepConfig
 
 logger = logging.getLogger(__name__)
 

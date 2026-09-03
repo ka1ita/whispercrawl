@@ -53,8 +53,8 @@ services:
         condition: service_healthy
     restart: "no"
 
-  whispercrawl:
-    image: whispercrawl:latest
+  asr-crawler:
+    image: asr-crawler:latest
     environment:
       WATCH_DIR: /audio
       ASR_WEBSERVICE_URL: http://asr-webservice:9000

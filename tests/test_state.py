@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from whispercrawl.state import NullState, ProcessingState, default_state_path, open_state
+from asr_crawler.state import NullState, ProcessingState, default_state_path, open_state
 
 
 class TestProcessingState:
@@ -469,7 +469,7 @@ class TestLegacyIndexMigration:
 
         target = tmp_path / "db" / "state.db"
         # migrate without opening the DB, so a clean WAL close can't delete the moved sidecars
-        from whispercrawl.state import _migrate_legacy_index
+        from asr_crawler.state import _migrate_legacy_index
 
         _migrate_legacy_index(target, watch_dir)
 
@@ -500,7 +500,7 @@ class TestLegacyIndexMigration:
         watch_dir.mkdir()
         self._seed_legacy(watch_dir)
 
-        import whispercrawl.state as state_mod
+        import asr_crawler.state as state_mod
 
         def boom(*_a, **_kw):
             raise OSError("cannot move")
