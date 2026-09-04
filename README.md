@@ -110,6 +110,12 @@ python -m asr_crawler --config config.yaml
 
 # Delete all generated output files
 python -m asr_crawler --config config.yaml --once --cleanup
+
+# List recorded pipeline failures (exits non-zero if any are outstanding)
+python -m asr_crawler --config config.yaml --errors
+
+# Reset the failure counter that `max_error_count` uses to park the pipeline
+python -m asr_crawler --config config.yaml --reset-errors
 ```
 
 If `asr-crawler` is on your PATH after `pip install -e .`:
@@ -127,6 +133,7 @@ asr-crawler --config config.yaml --once
 | *(root)* | `watch_dir` | — | Directory to scan recursively |
 | | `extensions` | — | File extensions to process (e.g. `.mp3`, `.wav`) |
 | | `rescan` | `false` | `true` = reprocess files that already have output in any format (`.txt`, `.md`, or `.html`) |
+| | `max_error_count` | `null` | Park the pipeline after this many consecutive file failures (across runs); clear with `asr-crawler --reset-errors`. `null` = disabled |
 | `transcription` | `url` | `http://localhost:9000` | whisper-asr-webservice base URL |
 | | `language` | `auto` | Language code or `auto` |
 | | `diarize` | `false` | Enable speaker diarization |

@@ -390,6 +390,42 @@ class TestErrorRecording:
         assert ns.get_errors("x") == []
 
 
+class TestFailureCounter:
+    def test_fresh_index_is_zero(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            assert st.get_error_count() == 0
+
+    def test_bump_increments_and_persists(self, tmp_path: Path):
+        db = tmp_path / "s.db"
+        with ProcessingState.open(db) as st:
+            assert st.bump_error_count() == 1
+            assert st.bump_error_count() == 2
+        with ProcessingState.open(db) as st:
+            assert st.get_error_count() == 2
+            assert st.bump_error_count() == 3
+
+    def test_reset_returns_previous_and_zeroes(self, tmp_path: Path):
+        db = tmp_path / "s.db"
+        with ProcessingState.open(db) as st:
+            st.bump_error_count()
+            st.bump_error_count()
+            assert st.reset_error_count() == 2
+            assert st.get_error_count() == 0
+            assert st.reset_error_count() == 0
+
+    def test_clear_zeroes_the_counter(self, tmp_path: Path):
+        with ProcessingState.open(tmp_path / "s.db") as st:
+            st.bump_error_count()
+            st.clear()
+            assert st.get_error_count() == 0
+
+    def test_nullstate_counter_methods(self):
+        ns = NullState()
+        assert ns.get_error_count() == 0
+        assert ns.bump_error_count() == 0
+        assert ns.reset_error_count() == 0
+
+
 class TestNullState:
     def test_is_current_always_false(self):
         ns = NullState()

@@ -57,6 +57,11 @@ max_age_days: 180
 # Max files to process per run; the rest are picked up on the next scheduled run; omit/null = unlimited
 # max_files_per_run: 500
 
+# Park the pipeline after this many consecutive file failures (counted across runs).
+# A fully-successful file resets the counter; once parked, every run stops until
+# `asr-crawler --reset-errors`. Omit/null = disabled.
+# max_error_count: 20
+
 # ── Formatter ─────────────────────────────────────────────────────────────────
 formatter:
   format: html              # txt | html | md (default: txt)

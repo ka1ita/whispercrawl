@@ -4,6 +4,28 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-058: Stop the Run After Too Many Failed Files (Max Error Count)
+
+_A persisted `meta.error_count` counter in the processing index tracks
+consecutive file failures; a fully-successful file resets it. `max_error_count`
+(top-level config, `null` = off) parks the pipeline when the counter reaches the
+limit — every subsequent run short-circuits at a pre-flight check until
+`asr-crawler --reset-errors`. See
+[epics/EPIC-058-max-error-count-circuit-breaker.md](../epics/EPIC-058-max-error-count-circuit-breaker.md)._
+
+- [x] `config.py`: `max_error_count: Optional[int] = None` on `Config`; `load_config` reads `raw.get("max_error_count")`, validates `>= 1` when not `None` (`ValueError` otherwise) (EPIC-058, 2026-09-03)
+- [x] `state.py`: `get_error_count()` / `bump_error_count()` / `reset_error_count()` on `ProcessingState` (lazy `meta` key `error_count`, no schema bump); `NullState` → `0` / no-ops; `clear()` also zeroes it (EPIC-058, 2026-09-03)
+- [x] `main.py`: pre-flight check at top of `_run_pipeline` (and `--refresh`) — counter `>= max_error_count` → log ERROR, return without processing (exit 0) (EPIC-058, 2026-09-03)
+- [x] `main.py` `_finalize_file`: after `_record(...)` — `all_ok` → `reset_error_count()`; else `bump_error_count()` and, if `>= max_error_count`, log ERROR + set `run_halted` flag (chose a closed-over flag over a sentinel exception — no re-indent of the mode blocks) (EPIC-058, 2026-09-03)
+- [x] `main.py`: `per_file` loop `break`s on `run_halted`; per-directory pass skipped + `dir_file_texts` cleared when halted; final formatting of already-written results still runs; `per_step` completes the batch, next run is parked by the pre-flight check (EPIC-058, 2026-09-03)
+- [x] `main.py`: `run_reset_errors(config)` + `--reset-errors` flag; branch order `--cleanup` → `--reset-errors` → `--errors` → `--refresh` → `--once`/`--dry-run` → scheduler; logs `was N`, exits 0, does not touch the `errors` table (EPIC-058, 2026-09-03)
+- [x] `main.py`: end-of-run WARNING appends `Failure counter at N/M` when `max_error_count` set (EPIC-058, 2026-09-03)
+- [x] `config.yaml` + `deploy/{dev,prod,prod-local}/config.yaml`: commented `max_error_count:` block near `max_files_per_run` (EPIC-058, 2026-09-03)
+- [x] Docs: `CLAUDE.md` Key Conventions bullet + pipeline paragraph + `--reset-errors`; `docs/architecture/overview.md` (CLI list + brake section); new `docs/architecture/decisions/ADR-011-max-error-count.md` (ADR-010 was taken); `deploy/prod/DEPLOY.md` + `deploy/prod-local/DEPLOY.md` runbook; `README.md` CLI lines + config table row (EPIC-058, 2026-09-03)
+- [x] Tests: `test_config.py::TestMaxErrorCount` (default/accept/reject); `test_state.py::TestFailureCounter` (round-trip, persist across re-open, `clear()` zeroes, `NullState`); new `tests/test_max_error_count.py` (trips at limit + 3 `files` rows, success resets streak, pre-tripped short-circuits + reset resumes, multi-engine counts once, disabled never counts, `--dry-run` untouched, `run_reset_errors` keeps error rows / no-index noop) — 494 green (EPIC-058, 2026-09-03)
+
+---
+
 ## EPIC-057: Rename Project to asr-crawler
 
 _Pure rename, no behaviour change — mirrors EPIC-020. `whispercrawl` /

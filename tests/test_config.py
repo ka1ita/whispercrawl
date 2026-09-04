@@ -64,6 +64,24 @@ class TestMaxFilesPerRun:
             load_config(_write(tmp_path, "max_files_per_run: -5\n"))
 
 
+class TestMaxErrorCount:
+    def test_defaults_to_none(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, ""))
+        assert cfg.max_error_count is None
+
+    def test_positive_value_loads(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, "max_error_count: 20\n"))
+        assert cfg.max_error_count == 20
+
+    def test_zero_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="max_error_count"):
+            load_config(_write(tmp_path, "max_error_count: 0\n"))
+
+    def test_negative_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="max_error_count"):
+            load_config(_write(tmp_path, "max_error_count: -3\n"))
+
+
 class TestResultConfig:
     def test_defaults(self, tmp_path: Path):
         cfg = load_config(_write(tmp_path, ""))

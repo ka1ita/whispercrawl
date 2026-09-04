@@ -87,6 +87,23 @@ def run_errors(config: Config) -> int:
     return 1
 
 
+def run_reset_errors(config: Config) -> int:
+    """Reset the consecutive-failure counter that ``max_error_count`` uses to
+    park the pipeline (EPIC-058). Leaves recorded ``errors`` rows untouched and
+    does not run the pipeline. Always returns 0."""
+    from asr_crawler.state import ProcessingState, default_state_path
+
+    state_path = config.state.path or default_state_path(config.watch_dir)
+    if not Path(state_path).exists():
+        logger.info("No processing index at %s — failure counter is already 0.", state_path)
+        return 0
+
+    with ProcessingState.open(state_path) as state:
+        previous = state.reset_error_count()
+    logger.info("Failure counter reset (was %d).", previous)
+    return 0
+
+
 def run_cleanup(config: Config, dry_run: bool = False) -> None:
     """Delete the consolidated result files this version writes under watch_dir,
     and empty the processing index, without running the pipeline.
@@ -199,6 +216,20 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             rel, step, message, engine=engine, scope=scope, mtime=mtime, size=size
         )
 
+    # EPIC-058 — a run stops (and stays stopped) once the consecutive-failure
+    # counter reaches ``max_error_count``. A fully-successful file resets it;
+    # ``asr-crawler --reset-errors`` (or ``--cleanup``) clears it by hand.
+    if config.max_error_count is not None:
+        _err_count = state.get_error_count()
+        if _err_count >= config.max_error_count:
+            logger.error(
+                "Failure counter is at %d, at or above max_error_count (%d); not "
+                "processing. Review with 'asr-crawler --errors', fix the cause, then "
+                "run 'asr-crawler --reset-errors' to resume.",
+                _err_count, config.max_error_count,
+            )
+            return
+
     engines = config.transcription.engines
     # EPIC-056 — max engine /asr calls in flight at once. Never parallelise the
     # --refresh path (no HTTP call) or a single-engine run (nothing to overlap).
@@ -274,6 +305,9 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         # dir_path → engine → {filename: [transcript, fixed_text_or_None]}
         dir_file_texts: dict[Path, dict[str, dict[str, list]]] = {}
         all_outputs_to_format: list[Path] = []
+        # EPIC-058 — set by _finalize_file when the failure counter reaches
+        # max_error_count; the per-file loop and the per-directory pass check it.
+        run_halted = {"stop": False}
         # file_path → {engine: success_bool} accumulated across engines
         file_engine_ok: dict[Path, dict[str, bool]] = {}
         file_meta: dict[Path, tuple] = {}   # file_path → (rel, fst)
@@ -565,6 +599,20 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             _record(rel, fst, "done" if all_ok else "error",
                     "" if all_ok else f"pipeline step failed for engine(s): {', '.join(failed)}")
 
+            if config.max_error_count is not None and not run_halted["stop"]:
+                if all_ok:
+                    state.reset_error_count()
+                else:
+                    new_count = state.bump_error_count()
+                    if new_count >= config.max_error_count:
+                        run_halted["stop"] = True
+                        logger.error(
+                            "Failure counter reached max_error_count (%d); stopping this "
+                            "run. Fix the cause, then run 'asr-crawler --reset-errors' to "
+                            "resume.",
+                            config.max_error_count,
+                        )
+
         def _unexpected_file_failure(file_path: Path) -> None:
             """Last-resort guard: an exception escaped a step's own handling.
             Record the file as errored and move on rather than abort the run."""
@@ -624,6 +672,9 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     _finalize_file(file_path)
         else:
             for file_path in files:
+                if run_halted["stop"]:
+                    logger.info("Skipping remaining files — run halted by max_error_count")
+                    break
                 try:
                     plans = _prepare_file(file_path)
                     try:
@@ -643,6 +694,12 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                     _finalize_file(file_path)
 
         prefix = "_" if config.dir_summarization.underscore_prefix else ""
+        if run_halted["stop"] and dir_file_texts:
+            logger.info(
+                "Skipping directory summarization — run halted mid-batch, directories "
+                "are incomplete"
+            )
+            dir_file_texts.clear()
         for dir_path in sorted(dir_file_texts):
             dir_rel = _rel_dir(dir_path)
             for eng_name in sorted(dir_file_texts[dir_path]):
@@ -695,6 +752,12 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 "run 'asr-crawler --errors' for details",
                 n_files, n_dirs,
             )
+        if config.max_error_count is not None:
+            logger.warning(
+                "Failure counter at %d/%d (resets on the next fully-successful file, "
+                "or 'asr-crawler --reset-errors')",
+                state.get_error_count(), config.max_error_count,
+            )
 
         for path in all_outputs_to_format:
             if not path.exists():
@@ -729,6 +792,12 @@ def main() -> None:
         help="Re-run post-processing, summarization, and formatting from the transcript "
         "text stored in the processing index — no whisper call.",
     )
+    parser.add_argument(
+        "--reset-errors",
+        action="store_true",
+        help="Reset the consecutive-failure counter that 'max_error_count' uses to "
+        "park the pipeline, then exit. Recorded errors are left untouched.",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
@@ -737,6 +806,9 @@ def main() -> None:
     if args.cleanup and not args.once:
         run_cleanup(config, dry_run=args.dry_run)
         return
+
+    if args.reset_errors:
+        raise SystemExit(run_reset_errors(config))
 
     if args.errors:
         raise SystemExit(run_errors(config))

@@ -139,6 +139,8 @@ class Config:
     skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
     max_age_days: Optional[int] = None  # skip files older than this many days (mtime); None = unbounded
     max_files_per_run: Optional[int] = None  # cap files processed per run; None = unlimited
+    max_error_count: Optional[int] = None  # park the pipeline after this many consecutive file
+    #                                        failures (cross-run); clear with `--reset-errors`. None = off
     formatter: FormatterConfig = field(default_factory=FormatterConfig)
     state: StateConfig = field(default_factory=StateConfig)
 
@@ -265,6 +267,10 @@ def load_config(path: Path) -> Config:
     if max_files_per_run is not None and max_files_per_run < 1:
         raise ValueError(f"max_files_per_run must be >= 1, got {max_files_per_run!r}")
 
+    max_error_count = raw.get("max_error_count")
+    if max_error_count is not None and max_error_count < 1:
+        raise ValueError(f"max_error_count must be >= 1, got {max_error_count!r}")
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=watch_dir,
@@ -274,6 +280,7 @@ def load_config(path: Path) -> Config:
         skip_marker=raw.get("skip_marker", "_skip"),
         max_age_days=raw.get("max_age_days"),
         max_files_per_run=max_files_per_run,
+        max_error_count=max_error_count,
         formatter=formatter_cfg,
         state=state_cfg,
         transcription=transcription_cfg,

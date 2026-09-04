@@ -277,6 +277,44 @@ class ProcessingState:
             ).fetchall()
         return [ErrorRecord(*r) for r in rows]
 
+    # -- failure counter (EPIC-058) -------------------------------------------
+    # A cross-run count of consecutive file failures, stored as a ``meta`` row.
+    # ``max_error_count`` (config) parks the pipeline when it reaches the limit;
+    # a fully-successful file resets it, and ``asr-crawler --reset-errors`` (or
+    # ``--cleanup``) clears it manually.
+
+    def get_error_count(self) -> int:
+        row = self._conn.execute(
+            "SELECT value FROM meta WHERE key = 'error_count'"
+        ).fetchone()
+        if row is None:
+            return 0
+        try:
+            return int(row[0])
+        except (TypeError, ValueError):
+            return 0
+
+    def _set_error_count(self, value: int) -> None:
+        self._conn.execute(
+            "INSERT INTO meta(key, value) VALUES ('error_count', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(value),),
+        )
+        self._conn.commit()
+
+    def bump_error_count(self) -> int:
+        """Increment the failure counter by one; return the new value."""
+        new = self.get_error_count() + 1
+        self._set_error_count(new)
+        return new
+
+    def reset_error_count(self) -> int:
+        """Zero the failure counter; return the value it had before."""
+        previous = self.get_error_count()
+        if previous:
+            self._set_error_count(0)
+        return previous
+
     def is_current(self, rel_path: str, mtime: float, size: int) -> bool:
         """True when a ``done`` record exists for an unchanged file (mtime + size)."""
         rec = self.lookup(rel_path)
@@ -308,6 +346,7 @@ class ProcessingState:
         self._conn.execute("DELETE FROM files")
         self._conn.execute("DELETE FROM asr_results")
         self._conn.execute("DELETE FROM errors")
+        self._conn.execute("DELETE FROM meta WHERE key = 'error_count'")
         self._conn.commit()
 
     def close(self) -> None:
@@ -365,6 +404,15 @@ class NullState:
 
     def get_errors(self, rel_path: Optional[str] = None) -> list[ErrorRecord]:
         return []
+
+    def get_error_count(self) -> int:
+        return 0
+
+    def bump_error_count(self) -> int:
+        return 0
+
+    def reset_error_count(self) -> int:
+        return 0
 
     def mark(self, rel_path: str, status: str, mtime: float, size: int, detail: str = "") -> None:
         pass

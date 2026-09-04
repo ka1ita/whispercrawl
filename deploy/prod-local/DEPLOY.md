@@ -221,6 +221,17 @@ it left off. `setup.sh` creates and `chown`s the `db/` directory.
   It prints each failure grouped by path and **exits non-zero** when any are outstanding — suitable
   for a monitoring wrapper. A failure clears itself once that file / directory next succeeds.
   Leftover `_err.txt` files from a pre-EPIC-049 build are removed by hand (see §9).
+- **Systemic-failure brake (`max_error_count`).** Set `max_error_count: <N>` in `config.yaml` so an
+  ASR/Ollama outage or a wrong model name does not fail every file on every run in silence. After
+  `N` consecutive file failures the run stops and every later run is parked with an ERROR line until
+  you fix the cause and run:
+
+  ```bash
+  docker compose -f docker-compose.prod-local.yml run --rm asr-crawler --reset-errors
+  ```
+
+  A fully-successful file also resets the counter. `--reset-errors` only zeroes the counter — it
+  leaves recorded errors alone and reprocesses nothing.
 
 ---
 
