@@ -25,7 +25,7 @@ services:
       ASR_ENGINE: ${ASR_ENGINE:-whisperx}
       HF_TOKEN: ${HF_TOKEN}   # set in deploy/dev/.env (see deploy/dev/.env.example)
       HF_HUB_DISABLE_TELEMETRY: true
-      # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
+      HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:
       - asr_webservice_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface   # persists pyannote diarization model
@@ -36,12 +36,12 @@ services:
     ports:
       - "9001:9000"
     environment:
-      ASR_MODEL: ${ASR_MODEL2:-v1_rnnt}      # gigaam: v1_rnnt | v1_ctc | v2_rnnt | v2_ctc
+      ASR_MODEL: ${ASR_MODEL2:-v1_rnnt}      # gigaam: v1_rnnt | v1_ctc | v2_rnnt | v2_ctc | GIGAAM_MODELS = ["v1_rnnt", "v3_rnnt", "v3_ctc", "v3_e2e_rnnt", "v3_e2e_ctc"]
       ASR_ENGINE: ${ASR_ENGINE2:-gigaam}    # a different engine from `asr-webservice` so the two results differ
       ASR_REQUEST_LOGGING: ${ASR_REQUEST_LOGGING2:-true}
       HF_TOKEN: ${HF_TOKEN}
       HF_HUB_DISABLE_TELEMETRY: true
-      # HF_HUB_OFFLINE: true
+      HF_HUB_OFFLINE: true
     volumes:
       - asr_webservice2_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface
@@ -79,9 +79,7 @@ services:
     restart: "no"
 
   asr-crawler:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: asr-crawler:latest
     environment:
       WATCH_DIR: /audio
       ASR_WEBSERVICE_URL: http://asr-webservice:9000
@@ -98,8 +96,8 @@ services:
         condition: service_started
       asr-webservice2:
         condition: service_started
-      ollama-init:
-        condition: service_completed_successfully
+      ollama:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
