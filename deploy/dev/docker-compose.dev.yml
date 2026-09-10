@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Dev — everything in Docker.
 # asr-crawler connects to asr-webservice and ollama via internal Docker network.
 #
@@ -79,6 +77,9 @@ services:
     restart: "no"
 
   asr-crawler:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
     image: asr-crawler:latest
     environment:
       WATCH_DIR: /audio

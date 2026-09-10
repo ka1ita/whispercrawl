@@ -1,0 +1,10 @@
+.git
+.venv
+venv
+deploy
+db
+audio
+epics
+logs
+tasks
+tests

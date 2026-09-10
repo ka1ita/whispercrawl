@@ -30,7 +30,7 @@ processing_mode: per_file
 skip_marker: _skip
 
 # Files older than this are skipped and newer files are processed first (in days); omit/null = unbounded
-max_age_days: 180
+max_age_days: 1
 # Which of a file's timestamps the age window compares (EPIC-061):
 #   newest (default) = the newer of mtime and creation time — a file copied into
 #                      watch_dir long after it was last modified still counts as recent
