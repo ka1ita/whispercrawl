@@ -4,6 +4,26 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-061: Count Copied-In Files as Recent for `max_age_days`
+
+_`max_age_days` compared only `st_mtime`, and a copy preserves the original
+modification timestamp — so a file copied into `watch_dir` long after it was
+last modified was silently excluded from every run. The window now compares a
+file's arrival time by default: the newer of mtime and creation (Windows) /
+inode-change (Linux) time (`age_basis: newest`); `age_basis: mtime` restores
+the strict pre-EPIC-061 behavior. Sort order (newest-first by mtime) and the
+index identity (mtime + size) are unchanged. See
+[epics/EPIC-061-max-age-copied-files.md](../epics/EPIC-061-max-age-copied-files.md)._
+
+- [x] `file_walker.py`: `_arrival_ts(st)` helper (max of `st_mtime`, `st_ctime`, `st_birthtime` when present); `age_basis: str = "newest"` on `_candidate_stat` / `iter_media_files` / `directory_media_files` — the cutoff comparison uses mtime or the arrival ts; sort key and state identity untouched (EPIC-061, 2026-09-10)
+- [x] `config.py`: `age_basis: str = "newest"` on `Config` beside `max_age_days`; `load_config` validates `mtime` / `newest` (`ValueError` otherwise) (EPIC-061, 2026-09-10)
+- [x] `main.py`: pass `config.age_basis` to the `iter_media_files` call in `_run_pipeline` and the `directory_media_files` census call (EPIC-061, 2026-09-10)
+- [x] `config.yaml`, `deploy/prod/config.yaml`, `deploy/prod-local/config.yaml`: updated the `max_age_days` comment and added a commented `# age_basis: newest` explaining both values (EPIC-061, 2026-09-10)
+- [x] Docs: `docs/architecture/overview.md` `file_walker` paragraph now states the arrival-time comparison and both bases (EPIC-061, 2026-09-10)
+- [x] Tests: `test_file_walker.py` — new `TestAgeBasis` (`_arrival_ts` unit tests on synthetic stats / copied old file kept under newest / kept under the default / excluded under `mtime` / excluded when arrival is also old via monkeypatched `_arrival_ts` / `directory_media_files` same basis — 6); the five pre-existing mtime-window exclusion tests pin `age_basis="mtime"` explicitly; `test_config.py` — new `TestAgeBasis` (default / `mtime` loads / invalid raises — 3) (EPIC-061, 2026-09-10)
+
+---
+
 ## EPIC-059: Rebuild Directory Results From the Whole Directory
 
 _The per-directory pass built `_<dirname>.<ext>` only from the files processed

@@ -146,6 +146,8 @@ class TestIterMediaFiles:
         assert [f.name for f in files] == ["new.mp3", "mid.mp3", "old.mp3"]
 
     def test_max_age_days_excludes_older_files(self, tmp_path: Path):
+        # age_basis="mtime": the fixture files are freshly created (creation/ctime
+        # = now), so only the strict basis keeps this a pure mtime-window test.
         old = tmp_path / "old.mp3"
         recent = tmp_path / "recent.mp3"
         now = time.time()
@@ -154,7 +156,9 @@ class TestIterMediaFiles:
         recent.touch()
         os.utime(recent, (now - 86400, now - 86400))
 
-        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, max_age_days=5))
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=True, max_age_days=5, age_basis="mtime",
+        ))
         assert [f.name for f in files] == ["recent.mp3"]
 
     def test_max_age_days_none_is_unbounded(self, tmp_path: Path):
@@ -188,8 +192,80 @@ class TestIterMediaFiles:
 
         files = list(iter_media_files(
             tmp_path, EXTENSIONS, "", rescan=False, skip_marker="_skip", max_age_days=5,
+            age_basis="mtime",
         ))
         assert [f.name for f in files] == ["keep.mp3"]
+
+
+class TestAgeBasis:
+    """EPIC-061: ``max_age_days`` compares a file's arrival timestamp by default —
+    the newer of mtime and creation (Windows) / inode-change (Linux) time — so a
+    file copied into the tree long after it was last modified is still recent."""
+
+    def test_arrival_ts_returns_newest_of_available_timestamps(self):
+        from types import SimpleNamespace
+
+        from asr_crawler.file_walker import _arrival_ts
+
+        # mtime newer than ctime → mtime
+        assert _arrival_ts(SimpleNamespace(st_mtime=200.0, st_ctime=100.0)) == 200.0
+        # ctime newer — the copied-file case
+        assert _arrival_ts(SimpleNamespace(st_mtime=100.0, st_ctime=200.0)) == 200.0
+        # birthtime participates when the platform exposes it
+        assert _arrival_ts(
+            SimpleNamespace(st_mtime=100.0, st_ctime=150.0, st_birthtime=300.0)
+        ) == 300.0
+        assert _arrival_ts(
+            SimpleNamespace(st_mtime=400.0, st_ctime=150.0, st_birthtime=300.0)
+        ) == 400.0
+
+    def test_newest_basis_keeps_old_file_copied_in_recently(self, tmp_path: Path):
+        # A copy preserves mtime but arrives with a fresh creation (Windows) /
+        # inode-change (Linux — os.utime itself bumps ctime) timestamp.
+        copied = tmp_path / "copied.mp3"
+        copied.touch()
+        year_ago = time.time() - 365 * 86400
+        os.utime(copied, (year_ago, year_ago))
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, max_age_days=180))
+        assert [f.name for f in files] == ["copied.mp3"]
+
+    def test_newest_basis_excludes_file_that_also_arrived_long_ago(
+        self, tmp_path: Path, monkeypatch
+    ):
+        # ctime cannot be set portably, so fake the arrival clock: every file is
+        # old by every timestamp.
+        import asr_crawler.file_walker as fw
+
+        monkeypatch.setattr(fw, "_arrival_ts", lambda st: time.time() - 365 * 86400)
+        (tmp_path / "ancient.mp3").touch()
+
+        files = list(iter_media_files(tmp_path, EXTENSIONS, "", rescan=True, max_age_days=180))
+        assert files == []
+
+    def test_mtime_basis_excludes_the_copied_file(self, tmp_path: Path):
+        copied = tmp_path / "copied.mp3"
+        copied.touch()
+        year_ago = time.time() - 365 * 86400
+        os.utime(copied, (year_ago, year_ago))
+
+        files = list(iter_media_files(
+            tmp_path, EXTENSIONS, "", rescan=True, max_age_days=180, age_basis="mtime",
+        ))
+        assert files == []
+
+    def test_directory_census_uses_the_same_basis(self, tmp_path: Path):
+        copied = tmp_path / "copied.mp3"
+        copied.touch()
+        year_ago = time.time() - 365 * 86400
+        os.utime(copied, (year_ago, year_ago))
+
+        assert [
+            p.name for p in directory_media_files(tmp_path, EXTENSIONS, max_age_days=180)
+        ] == ["copied.mp3"]
+        assert directory_media_files(
+            tmp_path, EXTENSIONS, max_age_days=180, age_basis="mtime"
+        ) == []
 
 
 class TestIterMediaFilesWithState:
@@ -281,7 +357,7 @@ class TestIterMediaFilesWithState:
 
         files = list(iter_media_files(
             tmp_path, EXTENSIONS, "", rescan=False,
-            skip_marker="_skip", max_age_days=5, state=st,
+            skip_marker="_skip", max_age_days=5, age_basis="mtime", state=st,
         ))
         assert [f.name for f in files] == ["keep.mp3"]
 
@@ -364,7 +440,7 @@ class TestIgnoreProcessed:
 
         files = list(iter_media_files(
             tmp_path, EXTENSIONS, "", rescan=False,
-            skip_marker="_skip", max_age_days=10, ignore_processed=True,
+            skip_marker="_skip", max_age_days=10, age_basis="mtime", ignore_processed=True,
         ))
         assert [f.name for f in files] == ["keep.mp3"]
 
@@ -398,7 +474,9 @@ class TestDirectoryMediaFiles:
         keep = tmp_path / "keep.mp3"
         keep.touch()
 
-        files = directory_media_files(tmp_path, EXTENSIONS, skip_marker="_skip", max_age_days=5)
+        files = directory_media_files(
+            tmp_path, EXTENSIONS, skip_marker="_skip", max_age_days=5, age_basis="mtime",
+        )
         assert [p.name for p in files] == ["keep.mp3"]
 
     def test_candidate_that_vanishes_before_stat_is_skipped(self, tmp_path: Path, monkeypatch):

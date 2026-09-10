@@ -28,7 +28,7 @@ Recursively scans the configured directory for audio/video files. Supports two m
 - **skip-processed**: skip files that already have a corresponding output file (`<stem>.txt`, `<stem>.md`, or `<stem>.html` — any supported format). This means changing `formatter.format` between runs will not re-trigger processing for files that already have output in any format.
 - **full-rescan** (`rescan: true`): process all matching files regardless of existing output.
 
-Files are yielded **newest first** (by mtime). `max_age_days` bounds the scan to a recent window. When the persisted index (`state.py`) is enabled, files recorded as `done` with an unchanged mtime/size are skipped without probing the filesystem for output files.
+Files are yielded **newest first** (by mtime). `max_age_days` bounds the scan to a recent window; by default (`age_basis: newest`, EPIC-061) the window compares a file's newest timestamp — mtime or creation/inode-change time — so a file copied into the tree long after it was last modified still counts as recent; `age_basis: mtime` restores strict modification-time comparison. When the persisted index (`state.py`) is enabled, files recorded as `done` with an unchanged mtime/size are skipped without probing the filesystem for output files.
 
 `directory_media_files()` ([EPIC-059](../../epics/EPIC-059-dir-result-full-rebuild.md)) is the per-directory counterpart used by the directory-result rebuild: the direct children of one directory surviving the same filters (`extensions`, `skip_marker`, `max_age_days`), sorted by name. Non-recursive — a nested subdirectory produces its own directory result.
 

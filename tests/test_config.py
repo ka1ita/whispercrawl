@@ -232,3 +232,17 @@ class TestProcessingMode:
     def test_invalid_value_raises(self, tmp_path: Path):
         with pytest.raises(ValueError, match="processing_mode"):
             load_config(_write(tmp_path, "processing_mode: bogus\n"))
+
+
+class TestAgeBasis:
+    def test_defaults_to_newest(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, ""))
+        assert cfg.age_basis == "newest"
+
+    def test_mtime_loads(self, tmp_path: Path):
+        cfg = load_config(_write(tmp_path, "age_basis: mtime\n"))
+        assert cfg.age_basis == "mtime"
+
+    def test_invalid_value_raises(self, tmp_path: Path):
+        with pytest.raises(ValueError, match="age_basis"):
+            load_config(_write(tmp_path, "age_basis: ctime\n"))

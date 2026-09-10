@@ -6,6 +6,8 @@ clears it by hand.
 """
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,8 +54,14 @@ def _state(tmp_path: Path) -> ProcessingState:
 
 
 def _make_files(tmp_path: Path, n: int) -> None:
+    # Distinct mtimes (i increasing): the newest-first walk then processes the
+    # files in a fixed order (04 → 00) instead of tie-breaking on filesystem
+    # timestamp granularity — the reset-streak choreography below depends on it.
+    now = time.time()
     for i in range(n):
-        (tmp_path / f"{i:02d}.mp3").write_bytes(b"\x00")
+        p = tmp_path / f"{i:02d}.mp3"
+        p.write_bytes(b"\x00")
+        os.utime(p, (now - (n - i), now - (n - i)))
 
 
 def _always_fail(self, path: Path):

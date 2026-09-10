@@ -137,7 +137,9 @@ class Config:
     rescan: bool = False  # False = skip-processed, True = full rescan
     processing_mode: str = "per_file"  # "per_file" = all steps per file; "per_step" = each step across all files
     skip_marker: str = "_skip"  # skip files whose stem contains this string (case-insensitive); "" = disabled
-    max_age_days: Optional[int] = None  # skip files older than this many days (mtime); None = unbounded
+    max_age_days: Optional[int] = None  # skip files older than this many days; None = unbounded
+    age_basis: str = "newest"  # timestamp max_age_days compares: "newest" = newer of mtime and
+    #                            creation/change time (a copied-in old file is recent); "mtime" = strict
     max_files_per_run: Optional[int] = None  # cap files processed per run; None = unlimited
     max_error_count: Optional[int] = None  # park the pipeline after this many consecutive file
     #                                        failures (cross-run); clear with `--reset-errors`. None = off
@@ -271,6 +273,10 @@ def load_config(path: Path) -> Config:
     if max_error_count is not None and max_error_count < 1:
         raise ValueError(f"max_error_count must be >= 1, got {max_error_count!r}")
 
+    age_basis = raw.get("age_basis", "newest")
+    if age_basis not in ("mtime", "newest"):
+        raise ValueError(f"age_basis must be 'mtime' or 'newest', got {age_basis!r}")
+
     sched_raw = raw.get("schedule", {}) or {}
     return Config(
         watch_dir=watch_dir,
@@ -279,6 +285,7 @@ def load_config(path: Path) -> Config:
         processing_mode=processing_mode,
         skip_marker=raw.get("skip_marker", "_skip"),
         max_age_days=raw.get("max_age_days"),
+        age_basis=age_basis,
         max_files_per_run=max_files_per_run,
         max_error_count=max_error_count,
         formatter=formatter_cfg,

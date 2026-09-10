@@ -242,6 +242,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
         config.formatter.format,
         config.skip_marker,
         config.max_age_days,
+        config.age_basis,
         state,
         ignore_processed=refresh,
         engine_labels=[engine_label(e.name) for e in engines],
@@ -711,6 +712,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
             omitted: list[str] = []
             for f in directory_media_files(
                 dir_path, config.extensions, config.skip_marker, config.max_age_days,
+                config.age_basis,
             ):
                 if f.name in texts:
                     continue

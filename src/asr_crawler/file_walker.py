@@ -23,11 +23,25 @@ def detect_language(stem: str, default: str) -> str:
     return LANGUAGE_MAP[m.group(1).lower()] if m else default
 
 
+def _arrival_ts(st: os.stat_result) -> float:
+    """Newest of a file's modification and creation/inode-change timestamps.
+
+    The ``max_age_days`` window compares against this under ``age_basis:
+    newest``: a file copied into the tree long after it was last modified
+    keeps its old mtime but gets a fresh creation time (Windows) / inode
+    change time (Linux), so it still counts as recently arrived.
+    """
+    ts = max(st.st_mtime, st.st_ctime)
+    birth = getattr(st, "st_birthtime", None)
+    return max(ts, birth) if birth is not None else ts
+
+
 def _candidate_stat(
     path: Path,
     extensions: List[str],
     marker: str,
     cutoff: "float | None",
+    age_basis: str = "newest",
 ) -> "os.stat_result | None":
     """Shared candidate predicate for the two walks: the stat of a media file
     surviving the extension / skip-marker / max-age filters, else ``None``
@@ -43,9 +57,11 @@ def _candidate_stat(
         # Vanished / became unreadable between the directory scan and now.
         logger.debug("Skipping %s — no longer accessible", path)
         return None
-    if cutoff is not None and st.st_mtime < cutoff:
-        logger.debug("Skipping %s — older than max_age_days cutoff", path)
-        return None
+    if cutoff is not None:
+        ts = st.st_mtime if age_basis == "mtime" else _arrival_ts(st)
+        if ts < cutoff:
+            logger.debug("Skipping %s — older than max_age_days cutoff", path)
+            return None
     return st
 
 
@@ -54,15 +70,16 @@ def directory_media_files(
     extensions: List[str],
     skip_marker: str = "",
     max_age_days: Optional[int] = None,
+    age_basis: str = "newest",
 ) -> List[Path]:
     """Direct children of ``dir_path`` that are current media candidates, sorted
     by name — the per-directory census the directory-result rebuild is built
     from (EPIC-059).
 
     Applies the same filters as ``iter_media_files`` (extension, skip marker,
-    max age) so a rebuilt directory result matches what a full ``--refresh``
-    would write. Non-recursive on purpose: a nested subdirectory is its own
-    directory result, not part of this one.
+    max age on the same ``age_basis``) so a rebuilt directory result matches
+    what a full ``--refresh`` would write. Non-recursive on purpose: a nested
+    subdirectory is its own directory result, not part of this one.
     """
     marker = skip_marker.lower() if skip_marker else ""
     cutoff = time.time() - max_age_days * 86400 if max_age_days is not None else None
@@ -75,7 +92,7 @@ def directory_media_files(
     for path in children:
         if not path.is_file():
             continue
-        if _candidate_stat(path, extensions, marker, cutoff) is not None:
+        if _candidate_stat(path, extensions, marker, cutoff, age_basis) is not None:
             out.append(path)
     return out
 
@@ -88,11 +105,18 @@ def iter_media_files(
     output_format: str = "txt",  # kept for API compatibility; skip check covers all formats
     skip_marker: str = "",
     max_age_days: Optional[int] = None,
+    age_basis: str = "newest",
     state: Optional[State] = None,
     ignore_processed: bool = False,
     engine_labels: Optional[List[str]] = None,
 ) -> Generator[Path, None, None]:
     """Yield media files under root that need processing, newest first.
+
+    ``max_age_days`` compares a file's arrival timestamp under ``age_basis``:
+    ``newest`` (default) — the newer of its mtime and creation/inode-change
+    time, so a file copied into the tree long after it was last modified
+    still counts as recent; ``mtime`` — strict modification time. The
+    newest-first ordering always sorts by mtime.
 
     When ``state`` is supplied and ``rescan`` is False, files recorded as
     ``done`` (with unchanged mtime + size) are skipped without probing the
@@ -115,7 +139,7 @@ def iter_media_files(
             continue
         if not path.is_file():
             continue
-        st = _candidate_stat(path, extensions, _marker, _cutoff)
+        st = _candidate_stat(path, extensions, _marker, _cutoff, age_basis)
         if st is None:
             continue
         mtime, size = st.st_mtime, st.st_size
