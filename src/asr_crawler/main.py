@@ -183,7 +183,7 @@ def run_pipeline(
 
 
 def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: bool = False) -> None:
-    from asr_crawler.file_walker import iter_media_files
+    from asr_crawler.file_walker import directory_media_files, iter_media_files
     from asr_crawler.pipeline.cleaner import Cleaner
     from asr_crawler.pipeline.composer import compose
     from asr_crawler.pipeline.formatter import Formatter
@@ -700,12 +700,55 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                 "are incomplete"
             )
             dir_file_texts.clear()
+
+        def _census_texts(dir_path: Path, eng_name: str) -> "tuple[dict[str, list], list[str]]":
+            """EPIC-059 — texts for every current file in one directory+engine:
+            this run's in-memory entries (freshest for a reprocessed file) plus
+            the stored asr/fixed text the index keeps for the already-done ones.
+            Returns the merged {filename: [transcript, fixed_or_None]} map and
+            the census files omitted for having no stored text."""
+            texts: dict[str, list] = dict(dir_file_texts[dir_path][eng_name])
+            omitted: list[str] = []
+            for f in directory_media_files(
+                dir_path, config.extensions, config.skip_marker, config.max_age_days,
+            ):
+                if f.name in texts:
+                    continue
+                try:
+                    fst = f.stat()
+                except OSError:
+                    omitted.append(f.name)
+                    continue
+                rel = str(f.relative_to(config.watch_dir))
+                stored = state.get_text(rel, "asr", fst.st_mtime, fst.st_size, eng_name)
+                if stored is None:
+                    omitted.append(f.name)
+                    continue
+                texts[f.name] = [
+                    stored,
+                    state.get_text(rel, "fixed", fst.st_mtime, fst.st_size, eng_name),
+                ]
+            return texts, omitted
+
         for dir_path in sorted(dir_file_texts):
             dir_rel = _rel_dir(dir_path)
             for eng_name in sorted(dir_file_texts[dir_path]):
                 elabel = engine_label(eng_name)
                 dir_base = dir_path / (prefix + dir_path.name + elabel)
+                tag = f"{dir_path} [{eng_name}]" if eng_name else str(dir_path)
                 try:
+                    texts, omitted = _census_texts(dir_path, eng_name)
+                    if omitted:
+                        logger.warning(
+                            "Directory result for %s omits %d file(s) with no stored "
+                            "text: %s",
+                            tag, len(omitted), ", ".join(sorted(omitted)),
+                        )
+                    if not texts:
+                        logger.info(
+                            "No text available for %s — directory result not written", tag
+                        )
+                        continue
                     selected = {
                         name: _pick_summary_input(
                             config.dir_summarization.concat_source,
@@ -713,7 +756,7 @@ def _run_pipeline(config: Config, state, dry_run: bool, cleanup: bool, refresh: 
                             entry[1],
                             name,
                         )
-                        for name, entry in dir_file_texts[dir_path][eng_name].items()
+                        for name, entry in texts.items()
                     }
                     combined = dir_summarizer.concat_transcriptions(selected)
 

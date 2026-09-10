@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -20,6 +21,63 @@ def detect_language(stem: str, default: str) -> str:
     """Extract language from filename stem, e.g. 'meeting_ru' -> 'ru'."""
     m = LANGUAGE_SUFFIX_RE.search(stem)
     return LANGUAGE_MAP[m.group(1).lower()] if m else default
+
+
+def _candidate_stat(
+    path: Path,
+    extensions: List[str],
+    marker: str,
+    cutoff: "float | None",
+) -> "os.stat_result | None":
+    """Shared candidate predicate for the two walks: the stat of a media file
+    surviving the extension / skip-marker / max-age filters, else ``None``
+    (with a debug log saying why it was dropped)."""
+    if path.suffix.lower() not in extensions:
+        return None
+    if marker and marker in path.stem.lower():
+        logger.debug("Skipping %s — filename contains skip marker %r", path, marker)
+        return None
+    try:
+        st = path.stat()
+    except OSError:
+        # Vanished / became unreadable between the directory scan and now.
+        logger.debug("Skipping %s — no longer accessible", path)
+        return None
+    if cutoff is not None and st.st_mtime < cutoff:
+        logger.debug("Skipping %s — older than max_age_days cutoff", path)
+        return None
+    return st
+
+
+def directory_media_files(
+    dir_path: Path,
+    extensions: List[str],
+    skip_marker: str = "",
+    max_age_days: Optional[int] = None,
+) -> List[Path]:
+    """Direct children of ``dir_path`` that are current media candidates, sorted
+    by name — the per-directory census the directory-result rebuild is built
+    from (EPIC-059).
+
+    Applies the same filters as ``iter_media_files`` (extension, skip marker,
+    max age) so a rebuilt directory result matches what a full ``--refresh``
+    would write. Non-recursive on purpose: a nested subdirectory is its own
+    directory result, not part of this one.
+    """
+    marker = skip_marker.lower() if skip_marker else ""
+    cutoff = time.time() - max_age_days * 86400 if max_age_days is not None else None
+    out: List[Path] = []
+    try:
+        children = sorted(dir_path.iterdir())
+    except OSError:
+        logger.debug("Cannot enumerate %s — no longer accessible", dir_path)
+        return []
+    for path in children:
+        if not path.is_file():
+            continue
+        if _candidate_stat(path, extensions, marker, cutoff) is not None:
+            out.append(path)
+    return out
 
 
 def iter_media_files(
@@ -57,21 +115,10 @@ def iter_media_files(
             continue
         if not path.is_file():
             continue
-        if path.suffix.lower() not in extensions:
-            continue
-        if _marker and _marker in path.stem.lower():
-            logger.debug("Skipping %s — filename contains skip marker %r", path, skip_marker)
-            continue
-        try:
-            st = path.stat()
-        except OSError:
-            # Vanished / became unreadable between the directory scan and now.
-            logger.debug("Skipping %s — no longer accessible", path)
+        st = _candidate_stat(path, extensions, _marker, _cutoff)
+        if st is None:
             continue
         mtime, size = st.st_mtime, st.st_size
-        if _cutoff is not None and mtime < _cutoff:
-            logger.debug("Skipping %s — older than max_age_days=%s", path, max_age_days)
-            continue
         if not rescan and not ignore_processed:
             rel = str(path.relative_to(root))
             if state is not None and state.is_current(rel, mtime, size):

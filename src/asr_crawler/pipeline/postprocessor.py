@@ -88,6 +88,31 @@ class PostProcessor:
 
         return _TIMESTAMP_RE.sub(_shift, text)
 
+    @staticmethod
+    def _parse_stem_time(stem: str, formats: List[str]) -> Optional[datetime]:
+        """Parse time-of-day from the filename stem, trying each format in order.
+
+        If no format matches the full stem, retry them against each trailing
+        segment after a separator, so legacy date-prefixed names (e.g.
+        "2026-08-21_09_04_40") still resolve when only time-only formats are
+        configured (EPIC-060) — the date part of the stem is never used for
+        the offset anyway.
+        """
+        for fmt in formats:
+            try:
+                return datetime.strptime(stem, fmt)
+            except ValueError:
+                continue
+        for i in range(1, len(stem)):
+            if stem[i - 1].isalnum():
+                continue
+            for fmt in formats:
+                try:
+                    return datetime.strptime(stem[i:], fmt)
+                except ValueError:
+                    continue
+        return None
+
     def process(self, text: str, source_path: Path | None = None) -> str:
         if self.config.regex_enabled:
             text = self._apply_regex(text)
@@ -99,13 +124,7 @@ class PostProcessor:
             if isinstance(formats, str):
                 formats = [formats]
 
-            dt = None
-            for fmt in formats:
-                try:
-                    dt = datetime.strptime(stem, fmt)
-                    break
-                except ValueError:
-                    continue
+            dt = self._parse_stem_time(stem, formats)
 
             if dt is not None:
                 offset = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second)

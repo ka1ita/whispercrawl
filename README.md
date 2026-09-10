@@ -16,6 +16,8 @@ after all files in a directory:
 
 Output extension depends on `formatter.format` (`txt` / `md` / `html`).
 
+A directory result is rebuilt from **every** current file in the directory: when a new file is added, the next run updates the directory summary from it plus the stored transcripts of the already-processed files, instead of replacing it with a summary of the new file alone (EPIC-059).
+
 ---
 
 ## Requirements

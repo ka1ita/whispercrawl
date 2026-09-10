@@ -95,11 +95,17 @@ fail in a row.
 
 - **One consolidated result** per audio file (`<file>.<ext>`) and per directory
   (`_<dirname>.<ext>`, or `<dirname>.<ext>` when `dir_summarization.underscore_prefix: false`).
-  The raw ASR transcript and intermediate post-processed text live in the
-  processing index, not beside the audio. The `result:` config section controls
-  section order/headings (`file_sections`, `dir_sections`, `*_heading`,
-  `heading_level`, `separator`, `include_missing_headings`). Failures are recorded
-  in the index, not on disk (EPIC-049) — no sidecars, ever.
+  A directory result is rebuilt from **every current file in the directory** — the
+  files processed this run plus the stored texts of the already-`done` ones
+  (EPIC-059) — so a newly added file updates the directory result instead of
+  shrinking it to the new arrivals; a census file with no stored text (a
+  back-filled pre-index entry, a file a newly added engine never transcribed) is
+  omitted with a WARNING naming it. The raw ASR transcript and intermediate
+  post-processed text live in the processing index, not beside the audio. The
+  `result:` config section controls section order/headings (`file_sections`,
+  `dir_sections`, `*_heading`, `heading_level`, `separator`,
+  `include_missing_headings`). Failures are recorded in the index, not on disk
+  (EPIC-049) — no sidecars, ever.
 - `postprocessing.replace_transcription`, `file_summarization.output_suffix`,
   `dir_summarization.concat_suffix` / `output_suffix` (EPIC-047),
   `state.enabled` / `state.store_text` (EPIC-051), `cleanup.targets` and every

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from asr_crawler.file_walker import detect_language, iter_media_files
+from asr_crawler.file_walker import detect_language, directory_media_files, iter_media_files
 from asr_crawler.state import ProcessingState
 
 EXTENSIONS = [".mp3", ".wav", ".mp4"]
@@ -367,3 +367,55 @@ class TestIgnoreProcessed:
             skip_marker="_skip", max_age_days=10, ignore_processed=True,
         ))
         assert [f.name for f in files] == ["keep.mp3"]
+
+
+class TestDirectoryMediaFiles:
+    """EPIC-059: the non-recursive per-directory census the directory-result
+    rebuild is built from. Same filters as ``iter_media_files``."""
+
+    def test_direct_media_children_sorted_non_media_ignored(self, tmp_path: Path):
+        (tmp_path / "b.mp3").touch()
+        (tmp_path / "a.mp3").touch()
+        (tmp_path / "notes.txt").touch()
+        (tmp_path / "results.html").touch()
+        assert [p.name for p in directory_media_files(tmp_path, EXTENSIONS)] == ["a.mp3", "b.mp3"]
+
+    def test_non_recursive_subdirectory_files_not_returned(self, tmp_path: Path):
+        (tmp_path / "rec.mp3").touch()
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (sub / "inner.mp3").touch()
+        assert [p.name for p in directory_media_files(tmp_path, EXTENSIONS)] == ["rec.mp3"]
+
+    def test_skip_marker_and_max_age_apply(self, tmp_path: Path):
+        now = time.time()
+        marked = tmp_path / "rec_skip.mp3"
+        marked.touch()
+        os.utime(marked, (now, now))
+        old = tmp_path / "old.mp3"
+        old.touch()
+        os.utime(old, (now - 10 * 86400, now - 10 * 86400))
+        keep = tmp_path / "keep.mp3"
+        keep.touch()
+
+        files = directory_media_files(tmp_path, EXTENSIONS, skip_marker="_skip", max_age_days=5)
+        assert [p.name for p in files] == ["keep.mp3"]
+
+    def test_candidate_that_vanishes_before_stat_is_skipped(self, tmp_path: Path, monkeypatch):
+        real_stat = Path.stat
+
+        def flaky_stat(self, *args, **kwargs):
+            if self.name == "rec.mp3":
+                raise FileNotFoundError(2, "No such file or directory", str(self))
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", flaky_stat)
+        (tmp_path / "rec.mp3").touch()
+        (tmp_path / "other.mp3").touch()
+        assert [p.name for p in directory_media_files(tmp_path, EXTENSIONS)] == ["other.mp3"]
+
+    def test_empty_or_missing_directory_returns_empty(self, tmp_path: Path):
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        assert directory_media_files(empty, EXTENSIONS) == []
+        assert directory_media_files(tmp_path / "gone", EXTENSIONS) == []

@@ -4,6 +4,25 @@ Tasks are grouped by epic. Move to [done.md](done.md) when completed.
 
 ---
 
+## EPIC-059: Rebuild Directory Results From the Whole Directory
+
+_The per-directory pass built `_<dirname>.<ext>` only from the files processed
+in the current run and overwrote the existing result — a newly added file
+replaced the directory summary with one covering only itself (and
+`max_files_per_run`-capped runs each rewrote it with their own subset). The
+pass now rebuilds each touched directory's result from every current media
+file in the directory: this run's texts plus the stored `asr`/`fixed` text of
+the already-`done` ones, with census files that have no stored text omitted
+under a WARNING. See
+[epics/EPIC-059-dir-result-full-rebuild.md](../epics/EPIC-059-dir-result-full-rebuild.md)._
+
+- [x] `file_walker.py`: extract the shared candidate predicate (`_candidate_stat`: extension / skip-marker / max-age / stat-OSError, with the debug logs) and refactor `iter_media_files` onto it — behaviour-neutral; new `directory_media_files(dir_path, extensions, skip_marker, max_age_days)` returning the sorted direct children surviving the same filters, non-recursive, tolerant of a vanished/missing directory (EPIC-059, 2026-09-10)
+- [x] `main.py` per-directory pass: `_census_texts(dir_path, eng_name)` merges the in-run `dir_file_texts` (freshest — wins for a reprocessed file) with the stored `asr`/`fixed` text of every other census file via `state.get_text` (mtime/size match refuses stale text for free); omitted files → one WARNING per directory+engine naming them (not an `errors` row); an engine with no texts at all → INFO + no write (the `concat_transcriptions` empty-dict invariant is never hit); trigger set, `--refresh`, `--dry-run`, halted-run skip, and per-engine structure unchanged (EPIC-059, 2026-09-10)
+- [x] Docs: `CLAUDE.md` Key Conventions "One consolidated result" bullet extended with the rebuild semantics + omission WARNING; `docs/architecture/overview.md` (`file_walker` helper paragraph + per-directory result paragraph); new `docs/architecture/decisions/ADR-012-dir-result-full-rebuild.md`; `README.md` one-liner after the pipeline diagram (EPIC-059, 2026-09-10)
+- [x] Tests: `test_file_walker.py::TestDirectoryMediaFiles` (sorted direct children / non-recursive / marker+age / vanished / missing dir — 5); new `tests/test_pipeline/test_dir_rebuild.py` (new-file rebuild covers old files from the index, byte-identical to a from-scratch full run, `max_files_per_run` accumulation, changed-file fresh text, back-filled omission WARNING + no `errors` row, marker/age excluded from census, per-engine rebuild from own texts, engine-added-later omission, per-file `concat_source` fallback, `--refresh` unchanged — 10) — 509 green (EPIC-059, 2026-09-10)
+
+---
+
 ## EPIC-058: Stop the Run After Too Many Failed Files (Max Error Count)
 
 _A persisted `meta.error_count` counter in the processing index tracks

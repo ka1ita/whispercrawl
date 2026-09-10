@@ -125,11 +125,10 @@ postprocessing:
   timeout: 600
   # output_suffix / replace_transcription: deprecated no-ops since EPIC-047
   filename_timestamp_format:
-    - "%Y-%m-%d_%H_%M_%S"
-    - "%Y-%m-%d_%H-%M-%S"
-    - "%Y-%m-%d-%H-%M-%S"
-  #filename_timestamp_format: "%Y-%m-%d_%H_%M_%S"  # strptime format for filename stem to offset speaker timestamps
-  #   e.g. "%Y-%m-%d_%H_%M_%S" matches "2026-08-21_09_04_40"; null = disabled
+    - "%H_%M_%S"
+    - "%H-%M-%S"
+  #filename_timestamp_format: "%H_%M_%S"  # strptime format for filename stem to offset speaker timestamps
+  #   e.g. "%H_%M_%S" matches "09_04_40"; null = disabled
   #   accepts a list of formats tried in order
 
 # ── Per-File Summarization ────────────────────────────────────────────────────

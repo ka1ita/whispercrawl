@@ -30,6 +30,8 @@ Recursively scans the configured directory for audio/video files. Supports two m
 
 Files are yielded **newest first** (by mtime). `max_age_days` bounds the scan to a recent window. When the persisted index (`state.py`) is enabled, files recorded as `done` with an unchanged mtime/size are skipped without probing the filesystem for output files.
 
+`directory_media_files()` ([EPIC-059](../../epics/EPIC-059-dir-result-full-rebuild.md)) is the per-directory counterpart used by the directory-result rebuild: the direct children of one directory surviving the same filters (`extensions`, `skip_marker`, `max_age_days`), sorted by name. Non-recursive — a nested subdirectory produces its own directory result.
+
 ### `state.py`
 
 Persisted index of processed files, backed by a single SQLite file at `<config dir>/db/state.db` — a dedicated `db/` directory beside `config.yaml` (`/db/state.db` in the container, backed by its own bind mount). Always on (EPIC-051); the only knob is `state.path`, which overrides the default location. Each run records `done` / `error` per file so subsequent runs answer "already processed?" with an indexed lookup instead of up to three `exists()` probes per file, and an interrupted run resumes without redoing completed work. A file absent from the index but already carrying an output file is recorded as `done` on first sight — so enabling the index on an existing catalog reprocesses nothing. **Deleting `state.db` is safe**: the next run rebuilds it from whichever output files exist.
@@ -85,8 +87,13 @@ Per-file result: `<file>.<ext>` — `result.file_sections` (summary then transcr
 body; the body is the post-processed text when post-processing ran, else the raw
 transcript). Per-directory result: `_<dirname>.<ext>` (or `<dirname>.<ext>` when
 `dir_summarization.underscore_prefix: false`) — `result.dir_sections` (dir summary
-then every transcript concatenated with filename headers). Failures are recorded
-in the processing index (`errors` table), never written beside the audio.
+then every transcript concatenated with filename headers), covering **every
+current file in the directory**, not just this run's: already-`done` files
+contribute their stored `asr`/`fixed` text from the index, so adding a file to a
+processed directory updates the result instead of shrinking it to the new
+arrival ([EPIC-059](../../epics/EPIC-059-dir-result-full-rebuild.md); a census
+file with no stored text is omitted with a WARNING naming it). Failures are
+recorded in the processing index (`errors` table), never written beside the audio.
 
 ### `config.py`
 

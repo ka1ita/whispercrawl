@@ -148,8 +148,8 @@ postprocessing:
     - '.*Пам-пам-пам-пам-пам. Пам-пам-пам-пам-пам\n'
   timeout: 600                      # HTTP timeout in seconds
   filename_timestamp_format:
-    - "%Y-%m-%d_%H_%M_%S"
-    - "%Y-%m-%d-%H-%M-%S"
+    - "%H_%M_%S"
+    - "%H-%M-%S"
 
 # ── Per-File Summarization ────────────────────────────────────────────────────
 file_summarization:
