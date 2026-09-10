@@ -18,7 +18,7 @@ services:
       ASR_ENGINE: whisperx
       HF_TOKEN: ${HF_TOKEN}
       HF_HUB_DISABLE_TELEMETRY: true
-      # HF_HUB_OFFLINE: true            # enable after pyannote model is cached
+      HF_HUB_OFFLINE: true            # enable after pyannote model is cached
     volumes:
       - asr_webservice_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface

@@ -23,7 +23,7 @@ services:
       ASR_ENGINE: ${ASR_ENGINE:-whisperx}
       HF_TOKEN: ${HF_TOKEN}   # set in deploy/dev/.env (see deploy/dev/.env.example)
       HF_HUB_DISABLE_TELEMETRY: true
-      HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
+      # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:
       - asr_webservice_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface   # persists pyannote diarization model
@@ -39,7 +39,7 @@ services:
       ASR_REQUEST_LOGGING: ${ASR_REQUEST_LOGGING2:-true}
       HF_TOKEN: ${HF_TOKEN}
       HF_HUB_DISABLE_TELEMETRY: true
-      HF_HUB_OFFLINE: true
+      # HF_HUB_OFFLINE: true
     volumes:
       - asr_webservice2_cache:/root/.cache/whisper
       - hf_cache:/root/.cache/huggingface
