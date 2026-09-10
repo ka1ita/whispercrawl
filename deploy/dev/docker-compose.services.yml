@@ -22,8 +22,7 @@ services:
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true    # enable after pyannote model is cached in hf_cache volume
     volumes:
-      - asr_webservice_cache:/root/.cache/whisper
-      - hf_cache:/root/.cache/huggingface   # persists pyannote diarization model
+      - asr_webservice_cache:/root/.cache
     restart: unless-stopped
 
   asr-webservice2:
@@ -38,8 +37,7 @@ services:
       HF_HUB_DISABLE_TELEMETRY: true
       # HF_HUB_OFFLINE: true
     volumes:
-      - asr_webservice2_cache:/root/.cache/whisper
-      - hf_cache:/root/.cache/huggingface
+      - asr_webservice2_cache:/root/.cache
     restart: unless-stopped
 
   ollama:
@@ -76,5 +74,4 @@ services:
 volumes:
   asr_webservice_cache:
   asr_webservice2_cache:
-  hf_cache:
   ollama_data:

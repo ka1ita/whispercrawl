@@ -20,8 +20,7 @@ services:
       HF_HUB_DISABLE_TELEMETRY: true
       HF_HUB_OFFLINE: true            # enable after pyannote model is cached
     volumes:
-      - asr_webservice_cache:/root/.cache/whisper
-      - hf_cache:/root/.cache/huggingface
+      - asr_webservice_cache:/root/.cache
     restart: unless-stopped
 
   ollama:
@@ -74,5 +73,4 @@ services:
 
 volumes:
   asr_webservice_cache:
-  hf_cache:
   ollama_data:
