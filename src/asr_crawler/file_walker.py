@@ -47,6 +47,7 @@ def _candidate_stat(
     surviving the extension / skip-marker / max-age filters, else ``None``
     (with a debug log saying why it was dropped)."""
     if path.suffix.lower() not in extensions:
+        logger.debug("Skipping %s — extension not in configured extensions list", path)
         return None
     if marker and marker in path.stem.lower():
         logger.debug("Skipping %s — filename contains skip marker %r", path, marker)

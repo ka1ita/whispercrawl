@@ -136,6 +136,8 @@ whole run with a raw traceback; they should be recorded as an `errors` row
 - [x] Tests — `test_transcriber.py`: non-existent path → `TranscriptionError("cannot read source file")`; `httpx.ConnectError` → `TranscriptionError` (EPIC-055, 2026-09-02)
 - [x] Tests — new `test_resilient_failures.py`: bare `FileNotFoundError` from one file's `open()` → `errors` row + `status='error'`, second file still produces its result, run does not raise; `RuntimeError` from transcribe likewise; `Path.write_text` → `OSError` for one file → `finalize` row, no result file, other file unaffected; `Formatter.format_file` raising for one path → `format` row, others formatted; `concat_transcriptions` `RuntimeError` in one dir → `dir_finalize` `scope='dir'` row, other dir's result written; `KeyboardInterrupt` → `raises KeyboardInterrupt` + `status='partial'` (EPIC-055, 2026-09-02)
 - [x] Tests — `test_file_walker.py`: candidate whose `stat` raises `FileNotFoundError` is skipped, no exception, other candidates yielded (EPIC-055, 2026-09-02)
+- [x] `file_walker.py`: `_candidate_stat`'s extension check dropped a file with no DEBUG log, unlike the skip-marker / max-age / stat-OSError branches next to it (its own docstring promised one for all three filters) — a copied-in file with an unconfigured extension vanished with zero trace in logs or the index; added the missing `logger.debug(...)` (EPIC-055, 2026-09-11)
+- [x] Tests — `test_file_walker.py`: `test_unsupported_extension_logs_debug_reason` — a file whose extension isn't in `extensions:` logs a DEBUG line naming it (EPIC-055, 2026-09-11)
 - [x] Verified: full suite 460 passing; `ruff check src` unchanged at baseline (EPIC-055, 2026-09-02)
 
 ---

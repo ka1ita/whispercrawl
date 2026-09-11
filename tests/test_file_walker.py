@@ -62,6 +62,12 @@ class TestIterMediaFiles:
         files = list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
         assert all(f.suffix in EXTENSIONS for f in files)
 
+    def test_unsupported_extension_logs_debug_reason(self, media_dir: Path, caplog):
+        with caplog.at_level("DEBUG"):
+            list(iter_media_files(media_dir, EXTENSIONS, "", rescan=True, output_format="txt"))
+        assert "call.txt" in caplog.text
+        assert "extension not in configured extensions list" in caplog.text
+
     def test_skips_already_transcribed_html_format(self, tmp_path: Path):
         (tmp_path / "rec.mp3").touch()
         (tmp_path / "rec.html").touch()
